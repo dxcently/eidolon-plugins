@@ -1,0 +1,128 @@
+// `subagent_list`: every child this machine has spawned, from the state
+// directories `subagent_spawn` writes. One file, self-contained, like every
+// tool file: the manifest, the call, the POSIX script and the helpers it needs.
+pub fn manifest() {
+    #{
+        name: "subagent_list",
+        description: "List the subagents spawned from this machine: for each, its id, the model and role it runs, whether its process is alive, how it ended if it has, its journal path, and the peer id it is registered under -- which is what `subagent_steer` addresses. Read-only; nothing here starts or stops anything.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{},
+        },
+    }
+}
+
+pub async fn call(input) {
+    eidolon::shell(sh_cmd(LIST_SH, []), Some(60)).await
+}
+
+// The listing, as one POSIX sh script: this extension is meant for any Unix
+// eidolon runs on, so no GNU-only flag appears in it and `timeout` is not used
+// anywhere. The state root is computed here rather than in Rune because Rune
+// sees no environment.
+//
+// A child's live identity is its journal: `eidolon run` prints
+// `session: <journal>` to stderr, and the registration a session leaves in the
+// runtime directory names that same journal. The roster's *title* cannot do
+// this job — `eidolon run` registers before it is asked anything, so a headless
+// child's title is empty and stays empty.
+const LIST_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
+runtime=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/eidolon
+
+# The peer id of the session born with this journal, or nothing.
+peer_of() {
+  journal=$1
+  [ -n \"$journal\" ] || return 0
+  for m in \"$runtime\"/*/meta.json; do
+    [ -f \"$m\" ] || continue
+    body=$(cat \"$m\")
+    case \"$body\" in
+      *\"$journal\"*)
+        d=${m%/meta.json}
+        printf '%s' \"${d##*/}\"
+        return 0
+        ;;
+    esac
+  done
+  return 0
+}
+
+# How a child ended, from the status file `shell_background` writes beside its
+# log: compact JSON, `code` null when a signal ended it.
+ended_of() {
+  status=$1
+  if [ -z \"$status\" ] || [ ! -f \"$status\" ]; then
+    printf 'nothing recorded yet (still running, or nobody reaped it)'
+    return 0
+  fi
+  fields=$(sed -n 's/.*\"code\":\\([^,]*\\),\"signal\":\\([^,]*\\),.*/\\1 \\2/p' \"$status\")
+  code=${fields%% *}
+  signal=${fields#* }
+  if [ \"$code\" = null ]; then
+    printf 'killed by signal %s' \"$signal\"
+  elif [ -n \"$code\" ] && [ \"$fields\" != \"$code\" ]; then
+    printf 'exit code %s' \"$code\"
+  else
+    printf 'unreadable status file'
+  fi
+  return 0
+}
+
+if [ ! -d \"$root\" ]; then
+  printf 'no subagents: %s does not exist, so nothing has been spawned from here\\n' \"$root\"
+  exit 0
+fi
+any=no
+for path in \"$root\"/*/; do
+  [ -d \"$path\" ] || continue
+  any=yes
+  dir=${path%/}
+  id=${dir##*/}
+  if [ ! -f \"$dir/meta\" ]; then
+    printf '%s  (no meta file in %s)\\n' \"$id\" \"$dir\"
+    continue
+  fi
+  role=$(sed -n 's/^role=//p' \"$dir/meta\" | head -n 1)
+  model=$(sed -n 's/^model=//p' \"$dir/meta\" | head -n 1)
+  pid=$(sed -n 's/^pid=//p' \"$dir/meta\" | head -n 1)
+  log=$(sed -n 's/^log=//p' \"$dir/meta\" | head -n 1)
+  status=$(sed -n 's/^status=//p' \"$dir/meta\" | head -n 1)
+  started=$(sed -n 's/^started=//p' \"$dir/meta\" | head -n 1)
+  minutes=$(sed -n 's/^deadline_min=//p' \"$dir/meta\" | head -n 1)
+  [ -n \"$role\" ] || role=-
+  [ -n \"$model\" ] || model='(the config default)'
+  if [ -n \"$pid\" ] && kill -0 \"$pid\" 2>/dev/null; then
+    alive=alive
+  else
+    alive=not-alive
+  fi
+  journal=$(sed -n 's/^session: //p' \"$log\" 2>/dev/null | head -n 1)
+  peer=$(peer_of \"$journal\")
+  printf '%s  %s  %s\\n' \"$id\" \"$alive\" \"$(ended_of \"$status\")\"
+  printf '  model %s (role %s), started %s, deadline %s min, pid %s\\n' \"$model\" \"$role\" \"$started\" \"$minutes\" \"$pid\"
+  printf '  peer: %s\\n' \"${peer:-none}\"
+  printf '  journal: %s\\n' \"${journal:-not printed yet}\"
+  printf '  log: %s\\n' \"$log\"
+done
+[ \"$any\" = yes ] || printf 'no subagents under %s\\n' \"$root\"
+";
+
+// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
+// The only thing read by a shell here is the script itself and the arguments
+// beside it.
+fn quote(text) {
+    let s = `${text}`;
+    `'${s.replace("'", "'\\''")}'`
+}
+
+// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
+// than whatever `eidolon::shell` runs, so the same text behaves the same on
+// every Unix this extension is installed on.
+fn sh_cmd(script, args) {
+    let cmd = `sh -c ${quote(script)} sa`;
+    for a in args {
+        cmd += ` ${quote(a)}`;
+    }
+    cmd
+}

@@ -5,13 +5,21 @@ from the block below — the tool file carries this text whole, because upstream
 eidolon compiles each tool file on its own and reads nothing of this directory
 at spawn time. Keep the two in step.
 
-Three placeholders are filled in: `{parent}`, `{task}` and `{deadline}`.
-**`{cwd}` is not**: it becomes the words "the parent's working directory",
-since the child runs in the parent's directory and the path it would have
-printed is the one it already runs in. Nor is the deadline the child's own
-good manners — it is a `timeout` around the whole `eidolon run` — and the
-journal path is not in the brief at all: it lands in the child's own log,
-where the parent reads it for `eidolon resume`.
+Its **first line is `You are subagent {id}.`** and that line is load-bearing:
+it is what a roster listing shows as the child's title, so a human running
+`eidolon peers` — or a session reading `peers` — can tell one child from
+another and from the session that started it. (The four tools here do not rely
+on it: a headless `eidolon run` registers before it is asked anything, so the
+child's title stays empty. `subagent_list` and `subagent_steer` match on the
+journal path instead, which is exact. See `tools/subagent_list.rn`.)
+
+Four placeholders are filled in: `{id}`, `{parent}`, `{task}` and `{deadline}`.
+**`{cwd}` is not**: it becomes the words "the parent's working directory", since
+the child runs in the parent's directory and the path it would have printed is
+the one it already runs in. Nor is the deadline the child's own good manners —
+it is a `sleep` in a subshell that signals the child's process group, in
+`tools/subagent_spawn.rn` — and the journal path is not in the brief at all: it
+lands in the child's own log, where the parent reads it for `eidolon resume`.
 
 The lifecycle is the point of it: a subagent reports, stops, and is resumed
 from its journal if the parent wants more — so the brief has to make the
@@ -19,14 +27,17 @@ report addressable and the journal findable.
 
 | placeholder | what goes in |
 |---|---|
+| `{id}` | the child's id, `sa-<seconds>-<4 hex>`, which is also the name of its state directory |
 | `{parent}` | the parent's roster id (`peers` shows it; a chat's is `<cwd basename>-<4 hex>`) |
 | `{task}` | what to do, in the parent's words |
 | `{cwd}` | not filled in; the child runs in the parent's directory |
-| `{deadline}` | minutes before `timeout` kills the child and it reports anyway |
+| `{deadline}` | minutes before the child is stopped and reports anyway |
 
 ```
-You are a subagent. Your parent is {parent}; your tools run in {cwd}; you have
-{deadline} minutes, after which you stop and report what you have.
+You are subagent {id}.
+
+Your parent is {parent}; your tools run in {cwd}; you have {deadline} minutes,
+after which you are stopped and report what you have.
 
 {task}
 
@@ -48,4 +59,9 @@ nothing else:
 
 Your journal is the only thing that has to be right. Do not summarise it away,
 do not compact for a finished task, and do not delete the log.
+
+The parent follows you with `subagent_list`, `subagent_trace` and
+`subagent_steer`, and can stop you with `subagent_cancel`. A steer arrives at
+your next step: read it as a change of plan, and say so in your report.
+Do not call subagent_spawn yourself.
 ```

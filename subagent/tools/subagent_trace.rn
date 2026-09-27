@@ -1,0 +1,142 @@
+// `subagent_trace`: the tail of one child's log, plus whether it is still
+// running and how it ended. The log is the only window on a child mid-run — no
+// state of its turns is readable from outside, on purpose — so this is what a
+// steer is judged by: send it, then read what the child did with it.
+//
+// One file, self-contained, like every tool file: the manifest, the call, the
+// POSIX script and the helpers it needs.
+pub fn manifest() {
+    #{
+        name: "subagent_trace",
+        description: "The last lines of one subagent's log, with whether its process is alive and how it ended. The log is the child's whole output: its stdout, its stderr, and the `session:` line naming its journal. Read-only.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "id": #{
+                    "type": "string",
+                    "description": "The subagent id `subagent_spawn` returned: `sa-<seconds>-<4 hex>`.",
+                },
+                "lines": #{
+                    "type": "integer",
+                    "description": "How many lines from the end of the log to show. Default 40, clamped to 1..400.",
+                },
+            },
+            "required": ["id"],
+        },
+    }
+}
+
+pub async fn call(input) {
+    let id = checked_id(input.id);
+    if id == "" {
+        let msg = `not a subagent id: ${input.id} (they look like sa-1790508668-ab12) -- subagent_list has the ones there are`;
+        return Err(msg);
+    }
+    eidolon::shell(sh_cmd(TRACE_SH, [id, clamp_lines(input.get("lines"))]), Some(60)).await
+}
+
+// The tail, as one POSIX sh script: no GNU-only flag in it and no `timeout`
+// anywhere, because this extension is meant for any Unix eidolon runs on. The
+// state root is computed here rather than in Rune because Rune sees no
+// environment.
+const TRACE_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
+id=$1
+lines=$2
+dir=$root/$id
+
+# How a child ended, from the status file `shell_background` writes beside its
+# log: compact JSON, `code` null when a signal ended it.
+ended_of() {
+  status=$1
+  if [ -z \"$status\" ] || [ ! -f \"$status\" ]; then
+    printf 'nothing recorded yet (still running, or nobody reaped it)'
+    return 0
+  fi
+  fields=$(sed -n 's/.*\"code\":\\([^,]*\\),\"signal\":\\([^,]*\\),.*/\\1 \\2/p' \"$status\")
+  code=${fields%% *}
+  signal=${fields#* }
+  if [ \"$code\" = null ]; then
+    printf 'killed by signal %s' \"$signal\"
+  elif [ -n \"$code\" ] && [ \"$fields\" != \"$code\" ]; then
+    printf 'exit code %s' \"$code\"
+  else
+    printf 'unreadable status file'
+  fi
+  return 0
+}
+
+if [ ! -d \"$dir\" ]; then
+  printf 'unknown subagent %s: no state directory %s\\n' \"$id\" \"$dir\"
+  exit 0
+fi
+if [ ! -f \"$dir/meta\" ]; then
+  printf 'subagent %s has no meta file in %s, so nothing is recorded about it\\n' \"$id\" \"$dir\"
+  exit 0
+fi
+role=$(sed -n 's/^role=//p' \"$dir/meta\" | head -n 1)
+model=$(sed -n 's/^model=//p' \"$dir/meta\" | head -n 1)
+pid=$(sed -n 's/^pid=//p' \"$dir/meta\" | head -n 1)
+log=$(sed -n 's/^log=//p' \"$dir/meta\" | head -n 1)
+status=$(sed -n 's/^status=//p' \"$dir/meta\" | head -n 1)
+minutes=$(sed -n 's/^deadline_min=//p' \"$dir/meta\" | head -n 1)
+[ -n \"$role\" ] || role=-
+[ -n \"$model\" ] || model='(the config default)'
+if [ -n \"$pid\" ] && kill -0 \"$pid\" 2>/dev/null; then
+  alive=alive
+else
+  alive=not-alive
+fi
+printf 'subagent %s: %s, %s\\n' \"$id\" \"$alive\" \"$(ended_of \"$status\")\"
+printf 'model %s (role %s), deadline %s min, pid %s\\n' \"$model\" \"$role\" \"$minutes\" \"$pid\"
+if [ -f \"$log\" ]; then
+  printf 'log: %s -- last %s lines\\n' \"$log\" \"$lines\"
+  tail -n \"$lines\" \"$log\"
+  printf '\\n'
+else
+  printf 'log: %s (not written yet)\\n' \"$log\"
+fi
+";
+
+// An id this tool will accept: the shape `subagent_spawn` mints, and nothing
+// else. Every value reaching a shell is quoted, but a path is not a value, and
+// this is what keeps an id from being one.
+fn checked_id(raw) {
+    let id = `${raw}`;
+    if !id.starts_with("sa-") || id.contains("/") || id.contains(".") {
+        return "";
+    }
+    id
+}
+
+// Default 40; clamped rather than passed on, since the number reaches `tail`.
+fn clamp_lines(requested) {
+    let n = match requested {
+        Some(v) => v,
+        None => 40,
+    };
+    if n < 1 {
+        1
+    } else if n > 400 {
+        400
+    } else {
+        n
+    }
+}
+
+// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
+fn quote(text) {
+    let s = `${text}`;
+    `'${s.replace("'", "'\\''")}'`
+}
+
+// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
+// than whatever `eidolon::shell` runs, so the same text behaves the same on
+// every Unix this extension is installed on.
+fn sh_cmd(script, args) {
+    let cmd = `sh -c ${quote(script)} sa`;
+    for a in args {
+        cmd += ` ${quote(a)}`;
+    }
+    cmd
+}
