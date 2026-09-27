@@ -1,0 +1,146 @@
+// `subagent_spawn`: a child `eidolon run` in the background, handed the brief
+// in ../brief.md. The child reports to this session once with `send` and
+// stops; nothing here waits for it.
+pub fn manifest() {
+    #{
+        name: "subagent_spawn",
+        description: "Start a child eidolon session in the background with a brief, and return at once with its pid and log path. The child is one bounded task: when it is done, or out of time, it messages *this* session with `send` -- a direct message wakes an idle parent, which is the report arriving -- and then stops. Follow the log meanwhile; to stop it early, kill the pid, there is no cancel. Its journal is the record to pick it up again with `eidolon resume <journal>`, and the path is in the child's log.",
+        approval: "mutating",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "task": #{
+                    "type": "string",
+                    "description": "What the child should do, in your words. It runs in this session's working directory.",
+                },
+                "deadline_min": #{
+                    "type": "integer",
+                    "description": "Minutes the child has before `timeout` kills it and it reports what it has. Default 15, clamped to 1..120.",
+                },
+                "model": #{
+                    "type": "string",
+                    "description": "Model for the child, passed as `--model`. Leave it out to run the model the config defaults to.",
+                },
+                "yolo": #{
+                    "type": "boolean",
+                    "description": "Pass `--yolo` to the child: answer every question the gate raises with yes. Default false -- and without it the child stalls on its first flagged tool call (bash, write), because nobody is at its end to answer and nothing can be. Set it for any child meant to act.",
+                },
+            },
+            "required": ["task"],
+        },
+    }
+}
+
+pub async fn call(input) {
+    // The child reports to whoever is registered among its peers, so this
+    // session has to be: the roster's first line is `You are `<id>`.`, and
+    // the id is between its backticks. A session that is not in the swarm
+    // cannot be sent to, and a child of it could never report.
+    let roster = eidolon::peers().await?;
+    let id = parent_id(roster);
+    if id.is_empty() {
+        return Err("`peers` named no session id: this session is not registered among its peers (swarm disabled in config.toml?), so a child would have nobody to report to");
+    }
+    let deadline = deadline_min(input.get("deadline_min"));
+    // One command line, because `shell_background` takes one: refuse a child
+    // of a child, then `exec` so the pid that comes back is the child's own
+    // through `timeout`, which is the only deadline there is -- the brief's
+    // "{deadline} minutes" is the same number said to the model. The guard
+    // is a plain string, so its `$`s stay `$`s.
+    let guard = "[ -n \"$EIDOLON_SUBAGENT\" ] && { echo \"refused: a subagent may not spawn subagents\" >&2; exit 3; }; EIDOLON_SUBAGENT=1 exec timeout -k 10 ";
+    let cmd = `${guard}${deadline}m eidolon run `;
+    if let Some(model) = input.get("model") {
+        cmd += `--model ${quote(model)} `;
+    }
+    if input.get("yolo") == Some(true) {
+        cmd += "--yolo ";
+    }
+    cmd += quote(brief(id, input.task, deadline));
+    let started = eidolon::shell_background(cmd).await?;
+    Ok(`parent: ${id}, deadline: ${deadline} min\n${started}`)
+}
+
+// Everything below is the brief, its placeholders, and the three helpers: who
+// this session is in the roster, how long the child gets, and one shell word.
+// Upstream eidolon compiles each tool file on its own, and a tool file is
+// meant to be handed over whole.
+
+// The block from ../brief.md, placeholder and all: {parent}, {task} and
+// {deadline} are the three the tool fills, {cwd} becomes words rather than a
+// path because the child inherits the parent's directory, and the deadline
+// is enforced by `timeout` above rather than by the child's good manners.
+const BRIEF = "You are a subagent. Your parent is {parent}; your tools run in {cwd}; you have
+{deadline} minutes, after which you stop and report what you have.
+
+{task}
+
+When the task is done — or the deadline arrives — do exactly three things and
+nothing else:
+
+1. Send your parent one message, to {parent}, with `send` — a direct message
+   wakes an idle parent by default, and that is the point: the report is the
+   thing the parent is waiting on:
+   * state: done, or stopped-early and why
+   * what you changed, by path, and whether it is committed
+   * the checks you ran, with their counts, and what you could NOT check
+   * your journal path, so the parent can resume you (`eidolon resume <path>`,
+     optionally `--at <record id>`), and whether the context should be
+     compacted first (`compact` in a session; the journal records it)
+2. Say nothing else to anyone. No channel messages, no courtesy replies.
+3. Stop. If you are a one-shot run you simply end; if you are a chat, end your
+   turn and leave the journal as it is — it is the record the parent resumes.
+
+Your journal is the only thing that has to be right. Do not summarise it away,
+do not compact for a finished task, and do not delete the log.
+";
+
+// Not in ../brief.md's block: this tool's own last line, since a child that
+// spawns a child is a tree nobody is watching.
+const NO_NESTING = "Do not call subagent_spawn yourself.";
+
+fn brief(parent, task, deadline_min) {
+    let text = BRIEF
+        .replace("{parent}", parent)
+        .replace("{task}", task)
+        .replace("{deadline}", `${deadline_min}`)
+        .replace("{cwd}", "the parent's working directory");
+    `${text}\n${NO_NESTING}`
+}
+
+// The id between the first pair of backticks, and "" when the roster has no
+// such pair: `peers` says who is registered, not whether this session is.
+fn parent_id(roster) {
+    let id = "";
+    match roster.split_once("`") {
+        Some(head) => match head.1.split_once("`") {
+            Some(quoted) => id = quoted.0,
+            None => {}
+        },
+        None => {}
+    }
+    id
+}
+
+// Default 15; anything the model got wrong is clamped rather than passed on,
+// since `timeout` takes the number literally and 0 minutes is no child at all.
+fn deadline_min(requested) {
+    let n = match requested {
+        Some(v) => v,
+        None => 15,
+    };
+    if n < 1 {
+        1
+    } else if n > 120 {
+        120
+    } else {
+        n
+    }
+}
+
+// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
+// The only thing here that is arbitrary text is the brief, and the only thing
+// that is read by a shell is this command line.
+fn quote(text) {
+    let s = `${text}`;
+    `'${s.replace("'", "'\\''")}'`
+}

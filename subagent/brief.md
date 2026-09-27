@@ -1,23 +1,28 @@
 # The brief a spawned subagent is given
 
-**This is the shape, not the shipped wording.** The brief a `spawn` actually
-hands over is composed in the harness — `subagent_brief`, in
-`eidolon/crates/rune/src/host.rs` — because the tool is compiled into the
-binary and this directory is not read at spawn time. What it implements today
-is the first half of what is written below: the parent's id, the task, the
-report shape, and the instruction to stop. **Not implemented: `{cwd}` and
-`{deadline}`** (the child runs in the parent's directory and has no deadline),
-and the journal path is not in the brief — it lands in the tool's *result*
-instead, where the parent can keep it for `eidolon resume`. The lifecycle is the point of it:
-a subagent reports, stops, and is resumed from its journal if the parent wants
-more — so the brief has to make the report addressable and the journal findable.
+The brief is composed by [`tools/subagent_spawn.rn`](tools/subagent_spawn.rn)
+from the block below — the tool file carries this text whole, because upstream
+eidolon compiles each tool file on its own and reads nothing of this directory
+at spawn time. Keep the two in step.
+
+Three placeholders are filled in: `{parent}`, `{task}` and `{deadline}`.
+**`{cwd}` is not**: it becomes the words "the parent's working directory",
+since the child runs in the parent's directory and the path it would have
+printed is the one it already runs in. Nor is the deadline the child's own
+good manners — it is a `timeout` around the whole `eidolon run` — and the
+journal path is not in the brief at all: it lands in the child's own log,
+where the parent reads it for `eidolon resume`.
+
+The lifecycle is the point of it: a subagent reports, stops, and is resumed
+from its journal if the parent wants more — so the brief has to make the
+report addressable and the journal findable.
 
 | placeholder | what goes in |
 |---|---|
 | `{parent}` | the parent's roster id (`peers` shows it; a chat's is `<cwd basename>-<4 hex>`) |
 | `{task}` | what to do, in the parent's words |
-| `{cwd}` | where the tools should run |
-| `{deadline}` | minutes before you stop and report anyway |
+| `{cwd}` | not filled in; the child runs in the parent's directory |
+| `{deadline}` | minutes before `timeout` kills the child and it reports anyway |
 
 ```
 You are a subagent. Your parent is {parent}; your tools run in {cwd}; you have

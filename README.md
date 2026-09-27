@@ -9,7 +9,7 @@ installed by hand or by an agent reading its README.
 | extension | gives eidolon | runs alongside | status |
 |---|---|---|---|
 | [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back` | `eidolon-browser`, a Rust service driving one headless Chromium | works on upstream eidolon |
-| [`subagent/`](subagent/) | nothing yet | — | a design brief, not installable |
+| [`subagent/`](subagent/) | `subagent_spawn` | `eidolon run`, a child session in the background | works on upstream eidolon |
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in
 `search` tool, tied to the session's own key. To read a result, use `fetch`,
