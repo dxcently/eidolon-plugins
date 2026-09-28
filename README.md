@@ -8,7 +8,7 @@ installed by hand or by an agent reading its README.
 
 | extension | gives eidolon | runs alongside | status |
 |---|---|---|---|
-| [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back` | `eidolon-browser`, a Rust service driving one headless Chromium | works on upstream eidolon |
+| [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back` | `eidolon-browser`, a Rust service driving one headless Chromium | needs eidolon with the plugin runtime |
 | [`subagent/`](subagent/) | nothing yet | — | a design brief, not installable |
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in
@@ -29,18 +29,25 @@ order: **Prerequisites**, **Install**, **Verify**, **Uninstall**. See
 ## Layout
 
 ```
-<name>/
-├── README.md       what it is, and Prerequisites / Install / Verify / Uninstall
-├── tools/*.rn      → ~/.config/eidolon/tools/     one file per tool, named <name>_<verb>.rn
-├── service/        a Rust crate, when the tools need something running beside eidolon
-└── package.nix     how the flake builds that service
+<name>/                        → ~/.config/eidolon/plugins/<name>/
+├── plugin.rn      the manifest: name, version, description, claims
+├── README.md      what it is, and Prerequisites / Install / Verify / Uninstall
+├── tools/*.rn     one file per tool: the stem is the bare verb, registration is <name>_<verb>
+├── service/       a Rust crate, when the tools need something running beside eidolon
+└── package.nix    how the flake builds that service
 ```
 
-A tool file carries everything it needs, endpoint included (upstream's rule:
-a tool is one file you can hand to somebody). There is no manifest or
-registry; eidolon reads `~/.config/eidolon/tools/` and that is the whole
-contract today. If eidolon grows an extension format, these folders are
-already split by destination.
+The extension *is* the plugin directory: install it by putting the folder where
+eidolon looks, and every `tools/*.rn` is adopted as `<name>_<verb>`, attributed
+to the plugin in the gate's question and the log's audit lines. A tool file
+carries everything it needs, endpoint included (upstream's rule: a tool is one
+file you can hand to somebody). `plugin.rn` declares only what the plugin says
+about itself — the layout is what names the verbs.
+
+Upstream eidolon without the plugin runtime wants the flat install instead:
+`tools/*.rn` copied into `~/.config/eidolon/tools/` under their own names
+(`browser_open.rn`, …). That layout is the commit before the plugin one on this
+branch; the two do not share tool filenames.
 
 ## Building
 

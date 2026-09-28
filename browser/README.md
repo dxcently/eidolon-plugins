@@ -26,8 +26,9 @@ page scripts.
 ## Prerequisites
 
 - Linux or WSL.
-- eidolon with `api_request` (upstream since `a618ef1`, 2026-09-21). An older
-  eidolon can't compile the tools, and **Verify** shows fewer than 6.
+- eidolon with `api_request` (upstream since `a618ef1`, 2026-09-21) **and the
+  plugin runtime** — the tools are installed as a plugin directory, so an older
+  eidolon can't compile them and **Verify** shows fewer than 6.
 - One of:
   - **Nix** with flakes, or
   - **Rust** 1.85+ (`cargo`) and a **Chromium** or Chrome binary.
@@ -46,14 +47,30 @@ page scripts.
    cargo install --path browser/service
    ```
 
-2. The tools:
+2. The plugin — this directory *is* the plugin directory:
 
    ```bash
-   mkdir -p ~/.config/eidolon/tools
-   cp browser/tools/browser_*.rn ~/.config/eidolon/tools/
+   mkdir -p ~/.config/eidolon/plugins
+   cp -r browser ~/.config/eidolon/plugins/browser
    ```
 
-   (From a Nix-only install without a clone: `git clone https://github.com/dxcently/eidolon-extensions` first.)
+   (A symlink keeps one copy: `ln -s "$PWD/browser" ~/.config/eidolon/plugins/browser`.
+   From a Nix-only install without a clone: `git clone https://github.com/dxcently/eidolon-extensions` first.)
+
+   Then vouch its verbs — that is what stops the gate asking on every call — and
+   grant the token file each verb reads, so the credential is a recorded
+   permission instead of a side effect of the copy:
+
+   ```bash
+   eidolon plugins-trust browser
+   for v in open snapshot click type read back; do
+     eidolon plugins-grant browser_$v file:~/.config/eidolon/browser.token
+   done
+   ```
+
+   With a person at the console the first call of each verb asks instead, once
+   per verb, and the answer is written to the same store. Headless there is
+   nobody to answer, so grant them here.
 
 3. Start the service. It makes the token file on first run.
 
@@ -86,6 +103,7 @@ page scripts.
 ```bash
 curl -s http://127.0.0.1:8090/health
 # {"chromium_installed":true,"status":"ok"}
+eidolon plugins | grep -A8 '^browser '     # the six verbs, and whether each is vouched
 eidolon tools | grep -c '"name": "browser_'
 # 6
 ```
@@ -98,9 +116,15 @@ eidolon tools | grep -c '"name": "browser_'
 ```bash
 systemctl --user disable --now eidolon-browser 2>/dev/null
 rm -f ~/.config/systemd/user/eidolon-browser.service
-rm -f ~/.config/eidolon/tools/browser_*.rn ~/.config/eidolon/browser.token
+rm -rf ~/.config/eidolon/plugins/browser ~/.config/eidolon/browser.token
 nix profile remove browser 2>/dev/null || cargo uninstall eidolon-browser
 ```
+
+The vouch and grant rows stay behind in `~/.config/eidolon/policy.permits.rn`:
+`eidolon plugins-untrust browser` drops the vouches, and
+`eidolon plugins-revoke browser_open file:~/.config/eidolon/browser.token` drops
+one grant (once per verb). They are inert once the directory is gone, but the
+store is the record and it should say what is true.
 
 ## Settings
 
