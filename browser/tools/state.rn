@@ -1,4 +1,4 @@
-// browser/state.rn — the read the workflow scope cannot do.
+// browser/tools/state.rn — the read the workflow scope cannot do.
 //
 // The workflow scope has no fs: a watch that compares against a stored
 // baseline needs a tool to read it, and this is that tool, with one job —
