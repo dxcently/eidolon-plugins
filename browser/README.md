@@ -1,7 +1,7 @@
 # browser
 
 A real browser for eidolon: one headless Chromium, shared by every session on
-the machine, driven through six tools.
+the machine, driven through six tools, plus `browser_state` — the read a watch's workflow cannot do — and the `page_walk` / `page_watch` workflows.
 
 | tool | does |
 |---|---|
@@ -119,9 +119,9 @@ page scripts.
 ```bash
 curl -s http://127.0.0.1:8090/health
 # {"chromium_installed":true,"status":"ok"}
-eidolon plugins | grep -A8 '^browser '     # the six verbs, and whether each is vouched
+eidolon plugins | grep -A8 '^browser '     # the verbs and workflows, and whether each is vouched
 eidolon tools | grep -c '"name": "browser_'
-# 6
+# 7
 ```
 
 `chromium_installed: false` means no Chromium was found: set
