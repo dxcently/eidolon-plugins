@@ -1,0 +1,14 @@
+// The plugin manifest for `browser` — the directory's name is the namespace
+// every verb it ships is registered under (`browser_open`, ...), so this file
+// says only what the plugin says about itself.
+pub fn manifest() {
+    #{
+        name: "browser",
+        version: "0.1.0",
+        description: "one headless Chromium for the whole machine, behind six tools",
+        claims: #{
+            tools: ["open", "snapshot", "click", "type", "read", "back"],
+            grants: ["file:~/.config/eidolon/browser.token"],
+        },
+    }
+}
