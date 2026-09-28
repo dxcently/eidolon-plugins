@@ -78,11 +78,23 @@ page scripts.
 
 3. Start the service. It makes the token file on first run.
 
+   The manifest declares the daemon, so the harness drives it — and the
+   operator's yes is recorded against the declaration itself:
+
    ```bash
-   eidolon-browser
+   eidolon plugins service approve browser   # the yes, bound to the declaration's hash
+   eidolon plugins service start browser     # spawns it detached, waits for /health, reports the pid
+   eidolon plugins service status browser    # probes the port; never trusts a record
    ```
 
-   Leave it running, or run it as a systemd user service:
+   `start` refuses until the declaration is approved, and asks again if the
+   `service:` block changes — an update cannot inherit the right to run a
+   process. The child outlives the CLI and its output appends to
+   `<cache>/eidolon/services/browser.log`; `stop` signals the recorded pid
+   only after `/proc` agrees it is that process.
+
+   On a machine that should always have it, a systemd user unit is still the
+   better tool for that job:
 
    ```bash
    mkdir -p ~/.config/systemd/user
