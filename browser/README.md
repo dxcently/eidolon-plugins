@@ -72,6 +72,10 @@ page scripts.
    per verb, and the answer is written to the same store. Headless there is
    nobody to answer, so grant them here.
 
+   Coming from the flat install (the commit before this one)? Remove the old
+   copies first — `rm -f ~/.config/eidolon/tools/browser_*.rn` — or the plugin's
+   verbs collide with the operator's own and the plugin's are refused by name.
+
 3. Start the service. It makes the token file on first run.
 
    ```bash
