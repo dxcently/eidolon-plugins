@@ -6,6 +6,17 @@ pub fn manifest() {
         name: "browser",
         version: "0.1.0",
         description: "one headless Chromium for the whole machine, behind six tools",
+        // The daemon, declared: `eidolon plugins service approve browser`
+        // records the operator's yes against THIS text by hash, so an edit
+        // here asks again, and `service start` then runs it detached with
+        // readiness taken from the same `readiness` block the tools use.
+        // Chromium comes from PATH or EIDOLON_BROWSER_CHROME; the service
+        // makes the token file on first run.
+        service: #{
+            command: "eidolon-browser",
+            readiness: #{ port: 8090, health: "/health" },
+            ready_timeout_s: 30,
+        },
         claims: #{
             tools: ["open", "snapshot", "click", "type", "read", "back"],
             grants: ["file:~/.config/eidolon/browser.token"],
