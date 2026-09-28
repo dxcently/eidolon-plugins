@@ -13,7 +13,7 @@
 What you may touch: `~/.config/eidolon/plugins/` (add the extension's own
 directory), the extension's own token file, and a Nix profile or `~/.cargo/bin`
 for its service. Two commands in the Install section change permissions —
-`eidolon plugins-trust` vouches the verbs, `eidolon plugins-grant` records the
+`eidolon plugins trust` vouches the verbs, `eidolon plugins grant` records the
 credential. Run them as written and repeat them in your report: they are the
 part of an install a person should be able to see afterwards. Nothing else under
 `~/.config/eidolon/` — not `config.toml`, not `policy.rn`.

@@ -62,9 +62,9 @@ page scripts.
    permission instead of a side effect of the copy:
 
    ```bash
-   eidolon plugins-trust browser
+   eidolon plugins trust browser
    for v in open snapshot click type read back; do
-     eidolon plugins-grant browser_$v file:~/.config/eidolon/browser.token
+     eidolon plugins grant browser_$v file:~/.config/eidolon/browser.token
    done
    ```
 
@@ -121,8 +121,8 @@ nix profile remove browser 2>/dev/null || cargo uninstall eidolon-browser
 ```
 
 The vouch and grant rows stay behind in `~/.config/eidolon/policy.permits.rn`:
-`eidolon plugins-untrust browser` drops the vouches, and
-`eidolon plugins-revoke browser_open file:~/.config/eidolon/browser.token` drops
+`eidolon plugins untrust browser` drops the vouches, and
+`eidolon plugins revoke browser_open file:~/.config/eidolon/browser.token` drops
 one grant (once per verb). They are inert once the directory is gone, but the
 store is the record and it should say what is true.
 
