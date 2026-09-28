@@ -20,6 +20,7 @@ pub fn manifest() {
         claims: #{
             tools: ["open", "snapshot", "click", "type", "read", "back"],
             grants: ["file:~/.config/eidolon/browser.token"],
+            workflows: ["page_walk"],
         },
     }
 }
