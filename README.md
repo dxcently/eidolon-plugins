@@ -1,15 +1,17 @@
-# eidolon-extensions
+# eidolon-plugins
 
-Extensions for [eidolon](https://github.com/noah427/eidolon). Each folder is
-one extension, laid out by where its pieces go in eidolon, so it can be
-installed by hand or by an agent reading its README.
+Plugins for [eidolon](https://github.com/noah427/eidolon). Each folder is
+one plugin, installed with `eidolon plugins install dxcently/eidolon-plugins
+<name>` or by an agent reading its README. This repo is the curated
+collection, not the only source: any git repo with a `plugin.rn` folder
+installs the same way.
 
-## The extensions
+## The plugins
 
-| extension | gives eidolon | runs alongside | install | status |
+| plugin | gives eidolon | runs alongside | install | status |
 |---|---|---|---|---|
 | [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back` | `eidolon-browser`, a Rust service driving one headless Chromium | by hand — see its README | works on upstream eidolon |
-| [`subagent/`](subagent/) | `subagent_spawn`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-extensions subagent`, then `eidolon plugins trust subagent` | works on upstream eidolon |
+| [`subagent/`](subagent/) | `subagent_spawn`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` | works on upstream eidolon |
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in
 `search` tool, tied to the session's own key. To read a result, use `fetch`,
@@ -19,10 +21,10 @@ or `browser_open` + `browser_read` for pages that need a real browser.
 
 Tell an agent:
 
-> Install the `<name>` extension from this repo: read `<name>/README.md` and
+> Install the `<name>` plugin from this repo: read `<name>/README.md` and
 > follow it.
 
-Or do it yourself. Every extension README has the same four sections, run in
+Or do it yourself. Every plugin README has the same four sections, run in
 order: **Prerequisites**, **Install**, **Verify**, **Uninstall**. See
 [AGENTS.md](AGENTS.md) for the rules an agent follows while doing it.
 

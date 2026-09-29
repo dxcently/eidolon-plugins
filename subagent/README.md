@@ -57,7 +57,7 @@ handed, and each tool file carries what it needs whole.
 ## Install
 
 ```bash
-eidolon plugins install dxcently/eidolon-extensions subagent
+eidolon plugins install dxcently/eidolon-plugins subagent
 eidolon plugins trust subagent
 ```
 
@@ -72,7 +72,7 @@ A local checkout works the same way, and is the way to install a branch before
 it is pushed:
 
 ```bash
-eidolon plugins install file:///path/to/eidolon-extensions subagent --ref main
+eidolon plugins install file:///path/to/eidolon-plugins subagent --ref main
 ```
 
 ## Verify
