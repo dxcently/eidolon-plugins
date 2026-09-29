@@ -4,16 +4,21 @@ Child eidolon sessions for one bounded task each: one tool starts `eidolon run`
 in the background with a brief, four more follow, steer and stop it, and the
 child reports back to the session that started it with `send`.
 
-| tool | does |
-|---|---|
-| `subagent_spawn` | start a child `eidolon run` with a brief; returns at once with its id, pid and log |
-| `subagent_list` | every child this machine spawned: alive or not, how it ended, its journal and its peer id |
-| `subagent_trace` | the tail of one child's log, with whether it is alive and how it ended |
-| `subagent_steer` | one message into a running child, read at its next step |
-| `subagent_cancel` | SIGTERM to the child's whole process group, SIGKILL if it will not go |
+| tool | file | does |
+|---|---|---|
+| `subagent_spawn` | `tools/spawn.rn` | start a child `eidolon run` with a brief; returns at once with its id, pid and log |
+| `subagent_list` | `tools/list.rn` | every child this machine spawned: alive or not, how it ended, its journal and its peer id |
+| `subagent_trace` | `tools/trace.rn` | the tail of one child's log, with whether it is alive and how it ended |
+| `subagent_steer` | `tools/steer.rn` | one message into a running child, read at its next step |
+| `subagent_cancel` | `tools/cancel.rn` | SIGTERM to the child's whole process group, SIGKILL if it will not go |
+
+A tool file's **stem is the bare verb** and its declared `name:` is the
+**namespaced** one: `tools/spawn.rn` is adopted as `subagent_spawn`, because
+the plugin's directory name is the namespace. That is why these files are not
+called `subagent_spawn.rn`.
 
 ```
-eidolon ──tools/subagent_spawn.rn──shell_background──▶ bash ──▶ eidolon run (the child)
+eidolon ──plugin subagent/tools/spawn.rn──shell_background──▶ bash ──▶ eidolon run (the child)
      │                        pid, log under ~/.cache/eidolon/background/
      │
      └── writes a brief and a meta file per child, under
@@ -33,31 +38,62 @@ handed, and each tool file carries what it needs whole.
 - Any Unix eidolon runs on — Linux, WSL, macOS. Every command in the tool files
   is POSIX sh: no `timeout` (GNU coreutils, absent on macOS), no `setsid`
   binary, no `/proc`, no `sed -i`, and no `readlink -f`.
-- eidolon with `shell_background` and the swarm's `send` (any upstream with the
-  swarm built-ins).
+- eidolon **with the plugin system** — `eidolon plugins --help` is the proof;
+  the `eidolon` on an old `PATH` has none, and the install below fails there.
+  Plus `shell_background` and the swarm's `send` (any upstream with the swarm
+  built-ins).
 - The swarm **not disabled**: `[swarm] enabled = true` in
   `~/.config/eidolon/config.toml`, which is the default. `subagent_spawn`
   refuses when `peers` names no id, and `subagent_steer` cannot deliver: a
   session that is not registered among its peers has nobody to report to and
   nothing to send from.
-- A model the child can run. The config's default model is the child's model
-  unless `role` or `model` says otherwise — and if that default is not a
-  tool-calling model (eidolon's `mock` is not), pass `model` to `subagent_spawn`
-  or the child will not do anything.
+- A model the child can run: a tool-calling `default_model` in
+  `~/.config/eidolon/config.toml`, or a row in the `TIERS` table at the top of
+  [`tools/spawn.rn`](tools/spawn.rn) passed as `role`. The config default is
+  the child's model unless `role` or `model` says otherwise — and the default
+  on a stock install is `mock`, which is **not** tool-calling: pass `model` to
+  `subagent_spawn`, or fill in `TIERS`, or the child does nothing.
 
 ## Install
 
 ```bash
-mkdir -p ~/.config/eidolon/tools
-cp subagent/tools/*.rn ~/.config/eidolon/tools/
+eidolon plugins install dxcently/eidolon-extensions subagent
+eidolon plugins trust subagent
+```
+
+`plugins install` fetches the repo, validates `subagent/plugin.rn`, copies the
+folder into `~/.config/eidolon/plugins/subagent/` and records what it fetched.
+**Installing does not trust**: the five verbs land on the gate like any other
+caller's, so `plugins trust subagent` is the second, separate act — it vouches
+every verb the plugin ships (`spawn`, `list`, `trace`, `steer`, `cancel`). Add
+`--ref <branch|tag|commit>` to pin the install; the default is the repo's HEAD.
+
+A local checkout works the same way, and is the way to install a branch before
+it is pushed:
+
+```bash
+eidolon plugins install file:///path/to/eidolon-extensions subagent --ref main
 ```
 
 ## Verify
 
-All five compile, and `eidolon tools` prints each manifest; a file that does
-not compile is a `[tool] … failed to compile` note instead.
+The listing reads the plugin directory and compiles `plugin.rn`; the tools are
+adopted at session build, so `eidolon tools` prints each manifest. A file that
+does not compile is a note instead (`[tool] … failed to compile`, or
+`not adopted — …`), not a silent absence.
 
 ```bash
+eidolon plugins --dir ~/.config/eidolon/plugins
+# subagent 0.1.0
+#     child eidolon sessions for a bounded task: spawn, list, trace, steer, cancel
+#     payloads tools
+#     claims   tools: spawn, list, trace, steer, cancel
+#     subagent_cancel              vouched by …
+#     subagent_list                vouched by …
+#     subagent_spawn               vouched by …
+#     subagent_steer               vouched by …
+#     subagent_trace               vouched by …
+
 eidolon tools 2>&1 | grep -i subagent
 # "name": "subagent_spawn",
 # "name": "subagent_list",
@@ -66,7 +102,7 @@ eidolon tools 2>&1 | grep -i subagent
 # "name": "subagent_cancel",
 ```
 
-A subagent cannot spawn a subagent — the guard line as `subagent_spawn.rn`
+A subagent cannot spawn a subagent — the guard line as `tools/spawn.rn`
 writes it, run with the variable set:
 
 ```bash
@@ -92,12 +128,13 @@ eidolon run --yolo --model ollama:deepseek-v4.1-flash \
 ## Uninstall
 
 ```bash
-rm -f ~/.config/eidolon/tools/subagent_spawn.rn \
-      ~/.config/eidolon/tools/subagent_list.rn \
-      ~/.config/eidolon/tools/subagent_trace.rn \
-      ~/.config/eidolon/tools/subagent_steer.rn \
-      ~/.config/eidolon/tools/subagent_cancel.rn
+eidolon plugins uninstall subagent
 ```
+
+That removes the directory and the plugin's row in the record. It is the one
+act that shrinks the record, and the vouch rows are **left alone** — they
+answer nothing while no verb of that name is loaded, and a reinstall inherits
+the earlier yes. A service still running refuses; this plugin declares none.
 
 The children already spawned are untouched, and so are their state directories
 and journals: `kill` them, or `eidolon resume` them, by hand.
@@ -116,7 +153,7 @@ eidolon, where a subagent is a process of its own.
 | steer (a message mid-turn) | `subagent_steer`: `send` with wake, read by the child at its next step |
 | cancel | `subagent_cancel`: SIGTERM to the child's process group, SIGKILL after 5 s |
 | list | `subagent_list` |
-| role tiers, "the parent's own model by default" | the `TIERS` table at the top of `subagent_spawn.rn`, empty by default; with nothing named the child runs the config's default model, which is **not** the parent's |
+| role tiers, "the parent's own model by default" | the `TIERS` table at the top of `tools/spawn.rn`, empty by default; with nothing named the child runs the config's default model, which is **not** the parent's |
 | the web UI's subagent routes | not in this repo: no service, no routes, nothing to declare. The reading surface is these five tools, `eidolon peers`, and the child's own session (`eidolon logs`, `eidolon resume`) |
 
 ## Limits

@@ -1,0 +1,20 @@
+// The manifest upstream eidolon's plugin system reads at adoption.
+//
+// The directory's contents are authoritative for *what exists*: discovery
+// compiles this file for the plugin's identity, and reads `tools/` for the
+// verbs. A file's STEM is the bare verb and its registered name is the
+// namespaced one — `tools/spawn.rn` is adopted as `subagent_spawn` — so the
+// `tools` claim below names stems, sorted, and the tool files keep declaring
+// the namespaced `name:` they are registered under.
+//
+// `name` must equal this directory's name (two identities for one plugin is
+// how a listing and a log come to disagree).
+
+pub fn manifest() {
+    #{
+        name: "subagent",
+        version: "0.1.0",
+        description: "child eidolon sessions for a bounded task: spawn, list, trace, steer, cancel",
+        claims: #{ tools: ["spawn", "list", "trace", "steer", "cancel"] },
+    }
+}

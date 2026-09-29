@@ -1,6 +1,6 @@
 # The brief a spawned subagent is given
 
-The brief is composed by [`tools/subagent_spawn.rn`](tools/subagent_spawn.rn)
+The brief is composed by [`tools/spawn.rn`](tools/spawn.rn)
 from the block below — the tool file carries this text whole, because upstream
 eidolon compiles each tool file on its own and reads nothing of this directory
 at spawn time. Keep the two in step.
@@ -11,14 +11,14 @@ it is what a roster listing shows as the child's title, so a human running
 another and from the session that started it. (The four tools here do not rely
 on it: a headless `eidolon run` registers before it is asked anything, so the
 child's title stays empty. `subagent_list` and `subagent_steer` match on the
-journal path instead, which is exact. See `tools/subagent_list.rn`.)
+journal path instead, which is exact. See `tools/list.rn`.)
 
 Four placeholders are filled in: `{id}`, `{parent}`, `{task}` and `{deadline}`.
 **`{cwd}` is not**: it becomes the words "the parent's working directory", since
 the child runs in the parent's directory and the path it would have printed is
 the one it already runs in. Nor is the deadline the child's own good manners —
 it is a `sleep` in a subshell that signals the child's process group, in
-`tools/subagent_spawn.rn` — and the journal path is not in the brief at all: it
+`tools/spawn.rn` — and the journal path is not in the brief at all: it
 lands in the child's own log, where the parent reads it for `eidolon resume`.
 
 The lifecycle is the point of it: a subagent reports, stops, and is resumed
