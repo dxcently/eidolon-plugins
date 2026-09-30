@@ -1,4 +1,4 @@
-# eidolon-extensions
+# eidolon-plugins
 
 Extensions for [eidolon](https://github.com/noah427/eidolon). Each folder is
 one extension, laid out by where its pieces go in eidolon, so it can be
