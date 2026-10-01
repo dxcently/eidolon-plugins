@@ -1,7 +1,7 @@
-// `jev_graph`: a graph of this plugin, as text.
+// `jev_graph`: a graph of this plugin, as text or as a drawing.
 //
 // The graphs are files in this plugin's `graphs/`, and a workflow cannot read a
-// file, so it asks for one here. Two forms:
+// file, so it asks for one here. Three forms:
 //
 //   raw: true       the file's text exactly as it is on disk (small graphs only:
 //                   the harness spills a tool answer over about 8 KB to a file and
@@ -13,9 +13,8 @@
 //                   joined are the file. This is how lib/interp.rn's `run_pinned`
 //                   reads a graph: it hashes the joined text and refuses to run a
 //                   graph whose hash it does not pin.
-//
-// Neither form returns the drawing of the graph (states and transitions for a
-// viewer); that is the default, below.
+//   (neither)       the graph's drawing, for a viewer: JSON, described above `draw`
+//                   below.
 //
 // Where the plugin is: ${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}.
 // A copy under test sets EIDOLON_JEV_DIR. The graph id is checked to be letters,
@@ -24,7 +23,7 @@
 pub fn manifest() {
     #{
         name: "jev_graph",
-        description: "A jev graph of this plugin. With raw: true, the graph file's text exactly as stored; with from: N, one page of that text from line N (a first line `jev-page next=M`, then the lines) -- a graph workflow reads and hash-checks it this way. Otherwise the graph's drawing: its states, the transitions between them, and what each state's menu is made from, as JSON.",
+        description: "A jev graph of this plugin, drawn: JSON with its states (path, kind leaf/compound/final/history, description, what the menu is made from, the tools its actions call), its edges (from, to, kind, event, guard type) and the input it takes. With raw: true, the graph file's text exactly as stored; with from: N, one page of that text from line N (a first line `jev-page next=M`, then the lines) -- a graph workflow reads and hash-checks it that way.",
         approval: "read_only",
         input_schema: #{
             "type": "object",
@@ -92,5 +91,278 @@ pub async fn call(input) {
     if raw {
         return Ok(text);
     }
-    Err("the drawing form is not built yet; ask for raw: true")
+    let doc = match json::from_string(text) {
+        Ok(d) => d,
+        Err(e) => return Err(`the graph ${id} is not JSON: ${e}`),
+    };
+    Ok(json::to_string(draw(doc))?)
+}
+
+// --- the drawing ---------------------------------------------------------------
+//
+// {graph, description, initial, input, budget, tools, root_on, states, edges, marks}
+//
+//   states[]  {path, kind: leaf|compound|final|history, description?, initial?,
+//              choose?: {source: menu|lines|refs|transitions, options?, floor?, ask?},
+//              tools?: [names a state's actions call, as written]}
+//   edges[]   {from, to, kind: initial|always|on|onDone|history, event?, guard?, reenter?}
+//             from and to are dotted paths ("investigate.identify"); to is null for
+//             a transition with no target (its actions run and the state stays).
+//             root_on has the same shape for the events the root handles (ERROR),
+//             whose from is "*" (any state).
+//   marks     {tool: "jev_mark", kinds: [...]}: how a run's journal says which
+//             state is active (README, "Drawing a run").
+
+fn is_null(v) {
+    match v {
+        () => true,
+        _ => false,
+    }
+}
+
+fn get_or(o, key, dflt) {
+    if o is Object {
+        match o.get(key) {
+            Some(v) => v,
+            None => dflt,
+        }
+    } else {
+        dflt
+    }
+}
+
+fn sorted_keys(o) {
+    let ks = [];
+    if o is Object {
+        for (k, _) in o {
+            ks.push(k);
+        }
+    }
+    ks.sort();
+    ks
+}
+
+fn dotted(path) {
+    let out = "";
+    let first = true;
+    for p in path {
+        if !first {
+            out += ".";
+        }
+        out += p;
+        first = false;
+    }
+    out
+}
+
+fn transitions_of(v) {
+    let out = [];
+    if is_null(v) {
+        return out;
+    }
+    if v is String {
+        out.push(#{ target: v });
+    } else if v is Object {
+        out.push(v);
+    } else if v is Vec {
+        for t in v {
+            if t is String {
+                out.push(#{ target: t });
+            } else {
+                out.push(t);
+            }
+        }
+    }
+    out
+}
+
+// A target as a dotted path: `#id.a.b` is absolute, a bare name is a sibling of
+// the state the transition is declared on (a root transition's is top-level).
+fn target_path(id, owner, target) {
+    if target.starts_with("#") {
+        let parts = [];
+        for p in target.get(1..).unwrap_or("").split(".") {
+            if p != "" {
+                parts.push(p);
+            }
+        }
+        let out = [];
+        let i = 1;
+        while i < parts.len() {
+            out.push(parts[i]);
+            i += 1;
+        }
+        return dotted(out);
+    }
+    let out = [];
+    let i = 0;
+    while i + 1 < owner.len() {
+        out.push(owner[i]);
+        i += 1;
+    }
+    out.push(target);
+    dotted(out)
+}
+
+fn action_tools(actions, found) {
+    if !(actions is Vec) {
+        return;
+    }
+    for a in actions {
+        if a is Object && get_or(a, "type", "") == "tool" {
+            let name = get_or(get_or(a, "params", #{}), "name", ());
+            if name is String {
+                found.push(name);
+            }
+        }
+    }
+}
+
+fn edge_of(id, from, owner, tr, kind, event) {
+    let e = #{ from: from, kind: kind };
+    if event != "" {
+        e["event"] = event;
+    }
+    match tr.get("target") {
+        Some(t) => { e["to"] = target_path(id, owner, t); }
+        None => { e["to"] = (); }
+    }
+    let guard = get_or(tr, "guard", ());
+    if guard is Object {
+        e["guard"] = get_or(guard, "type", "");
+    }
+    if get_or(tr, "reenter", false) == true {
+        e["reenter"] = true;
+    }
+    e
+}
+
+fn choose_of(st) {
+    let meta = get_or(st, "meta", #{});
+    let choose = get_or(meta, "choose", ());
+    if !(choose is Object) {
+        return ();
+    }
+    let c = #{};
+    let from = get_or(choose, "from", ());
+    if from is String {
+        c["source"] = from;
+    } else if from is Object {
+        let ks = sorted_keys(from);
+        if ks.len() > 0 {
+            c["source"] = ks[0];
+            if ks[0] == "menu" {
+                let labels = [];
+                for item in get_or(from, "menu", []) {
+                    labels.push(get_or(item, "label", ""));
+                }
+                c["options"] = labels;
+            }
+        }
+    }
+    let floor = get_or(meta, "floor", ());
+    if !is_null(floor) {
+        c["floor"] = floor;
+    }
+    let ask = get_or(meta, "ask", ());
+    if !is_null(ask) {
+        c["ask"] = ask;
+    }
+    c
+}
+
+fn walk(id, states, parent, out_states, out_edges) {
+    for key in sorted_keys(states) {
+        let st = states[key];
+        let path = parent.clone();
+        path.push(key);
+        let name = dotted(path);
+        let kind = "leaf";
+        let ty = get_or(st, "type", "");
+        let children = get_or(st, "states", ());
+        if ty == "final" {
+            kind = "final";
+        } else if ty == "history" {
+            kind = "history";
+        } else if children is Object {
+            kind = "compound";
+        }
+        let rec = #{ path: name, kind: kind };
+        let d = get_or(st, "description", ());
+        if d is String {
+            rec["description"] = d;
+        }
+        let ch = choose_of(st);
+        if ch is Object {
+            rec["choose"] = ch;
+        }
+        let tools = [];
+        action_tools(get_or(st, "entry", ()), tools);
+        action_tools(get_or(st, "exit", ()), tools);
+        let on = get_or(st, "on", #{});
+        for ev in sorted_keys(on) {
+            for tr in transitions_of(on[ev]) {
+                action_tools(get_or(tr, "actions", ()), tools);
+            }
+        }
+        if tools.len() > 0 {
+            tools.sort();
+            rec["tools"] = tools;
+        }
+        if kind == "compound" {
+            let init = get_or(st, "initial", "");
+            if init != "" {
+                rec["initial"] = init;
+                out_edges.push(#{ from: name, to: name + "." + init, kind: "initial" });
+            }
+        }
+        if kind == "history" {
+            match st.get("target") {
+                Some(t) => { out_edges.push(#{ from: name, to: target_path(id, path, t), kind: "history" }); }
+                None => {}
+            }
+        }
+        out_states.push(rec);
+        for tr in transitions_of(get_or(st, "always", ())) {
+            out_edges.push(edge_of(id, name, path, tr, "always", ""));
+        }
+        for ev in sorted_keys(on) {
+            for tr in transitions_of(on[ev]) {
+                out_edges.push(edge_of(id, name, path, tr, "on", ev));
+            }
+        }
+        for tr in transitions_of(get_or(st, "onDone", ())) {
+            out_edges.push(edge_of(id, name, path, tr, "onDone", ""));
+        }
+        if kind == "compound" {
+            walk(id, children, path, out_states, out_edges);
+        }
+    }
+}
+
+fn draw(doc) {
+    let id = get_or(doc, "id", "");
+    let jev = get_or(get_or(doc, "meta", #{}), "jev", #{});
+    let states = [];
+    let edges = [];
+    walk(id, get_or(doc, "states", #{}), [], states, edges);
+    let root_on = [];
+    let on = get_or(doc, "on", #{});
+    for ev in sorted_keys(on) {
+        for tr in transitions_of(on[ev]) {
+            root_on.push(edge_of(id, "*", [], tr, "on", ev));
+        }
+    }
+    #{
+        graph: id,
+        description: get_or(doc, "description", ""),
+        initial: get_or(doc, "initial", ""),
+        input: get_or(jev, "input", #{}),
+        budget: get_or(jev, "budget", #{}),
+        tools: get_or(jev, "tools", []),
+        root_on: root_on,
+        states: states,
+        edges: edges,
+        marks: #{ tool: "jev_mark", kinds: ["enter", "park", "final", "end"] },
+    }
 }
