@@ -112,7 +112,7 @@ pub async fn call(input) {
     }
     let out = eidolon::exec(program, args, Some(30)).await?;
     // wsl.exe's own messages are UTF-16: drop the NULs.
-    let out = if distro != "" { out.replace("\0", "") } else { out };
+    let out = if distro != "" { out.replace("\\0", "") } else { out };
     if out.starts_with("[exit code") || out.starts_with("[timed out") {
         if ssh != "" && out.starts_with("[exit code 255]") {
             return Err(`ssh to ${ssh} failed: ${out}`);
