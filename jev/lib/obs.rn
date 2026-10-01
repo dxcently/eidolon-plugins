@@ -1,17 +1,7 @@
-// jev/lib/obs.rn -- what a tool's text becomes once a graph stores it as an
-// observation, and the accessibility-tree lines a `refs` menu is built from.
-//
-// A snapshot from `browser_snapshot` starts with a head block:
-//
-//   url: <url>
-//   title: <title>
-//   heading: <the page's level-1 heading>      (and other `key: value` lines:
-//   scope: ...  roles: ...  section: ...  chars: <body length>)
-//   <blank line>
-//   <the tree: `- link "name" [ref=e7]:` lines, nested by indent>
-//
-// Anything else a tool returns (a command's output, a grep) has no head block
-// and is just `text`.
+// What a tool's text becomes as an observation, and the accessibility-tree lines a
+// `refs` menu is built from. A `browser_snapshot` starts with a head block of
+// `key: value` lines (url, title, heading, chars, ...) and a blank line, then the tree
+// (`- link "name" [ref=e7]:`, nested by indent). Any other tool text is just `text`.
 
 fn parse_head(raw) {
     let lines = raw.split("\n").collect::<Vec>();
@@ -26,7 +16,6 @@ fn parse_head(raw) {
     while i < lines.len() {
         let l = lines[i];
         if l == "" {
-            // the blank line that ends the block; the body is what follows
             let body = "";
             let j = i + 1;
             let first = true;
@@ -70,7 +59,6 @@ fn is_head_key(k) {
     !first
 }
 
-// The patterns of the tree grammar, compiled once per run and kept on rt.
 fn refs_grammar() {
     #{
         prop: regex_compile("^/(?P<key>[A-Za-z][A-Za-z0-9_-]*):\\s*(?P<value>.*)$").unwrap(),
@@ -85,7 +73,6 @@ fn is_landmark(role) {
         || role == "contentinfo" || role == "search" || role == "region"
 }
 
-// The attributes in ` [level=1] [ref=e7]` as an object.
 fn parse_attrs(gr, s) {
     let out = #{};
     let rest = s;
@@ -112,10 +99,8 @@ fn parse_attrs(gr, s) {
     out
 }
 
-// `- role "name" [attr=val] [ref=eN]:` lines into records
-// #{ref, role, name, level, url, landmark, text}, and a count of lines that
-// looked like tree syntax and did not parse. A line that is not tree syntax at
-// all (command output) is neither.
+// Tree lines into records #{ref, role, name, level, url, landmark, text}, and a count
+// of lines that looked like tree syntax and did not parse.
 fn parse_refs(gr, tree) {
     let records = [];
     let stack = [];
@@ -125,7 +110,6 @@ fn parse_refs(gr, tree) {
         if stripped == "" {
             continue;
         }
-        // indent in characters
         let indent = 0;
         for c in raw.chars() {
             if c == ' ' {
@@ -217,9 +201,8 @@ fn parse_refs(gr, tree) {
     #{ records: records, skipped: skipped }
 }
 
-// A tool's text result as `context.obs`. `chars:` in the head, when there is
-// one, is the body's length as the producer counted it: a body of any other
-// length was shortened on the way, and `truncated` says so.
+// `chars:` in the head is the body length as the producer counted it; any other length
+// means it was shortened on the way, and `truncated` says so.
 fn build_obs(gr, raw) {
     let parsed = parse_head(raw);
     let obs = #{ text: raw, url: (), title: (), h1: (), scope: (), section: (), chars: (), truncated: false };

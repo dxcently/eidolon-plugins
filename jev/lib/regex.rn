@@ -1,18 +1,14 @@
-// jev/lib/regex.rn -- a small backtracking regex engine, because a workflow's
-// scope has no regex (upstream gives it the default Rune modules and json only).
-// The graphs need three patterns:
+// A small backtracking regex engine: a workflow's scope has no regex. The graphs need
+// three patterns:
 //
 //   ^(?:https://en\.wikipedia\.org)?/wiki/[^:#?]+$    a link's url bound
 //   ^COMMAND\s+PID\s+USER                             an observation's header
 //   ^(?P<path>[^:\n]+):(?P<line>\d+):                 a grep hit's path and line
 //
-// Supported: literals; `.`; `\s \S \d \D \w \W \n \t` and escaped punctuation;
-// `[...]` and `[^...]` with ranges and those escapes; groups `(...)`, `(?:...)`
-// and `(?P<name>...)`; `|`; greedy `* + ?`; `^` and `$` (always at line
-// boundaries, the MULTILINE the interpreter this replaces used). Anything else
-// is refused by name when the pattern is parsed, never guessed at.
-//
-// Positions are in characters, not bytes.
+// Supported: literals; `.`; `\s \S \d \D \w \W \n \t` and escaped punctuation; `[...]` and
+// `[^...]` with ranges and those escapes; groups `(...)`, `(?:...)`, `(?P<name>...)`;
+// `|`; greedy `* + ?`; `^` and `$` (always at line boundaries). Anything else is
+// refused by name at parse, never guessed at. Positions are in characters.
 
 fn rx_fail(msg) {
     Err("regex: " + msg)
@@ -43,8 +39,6 @@ fn rx_escape_char(c) {
     }
 }
 
-// One `\x` escape at p.i (the backslash is already consumed): a class node,
-// or a literal char node.
 fn rx_escape(p) {
     let c = match rx_peek(p) {
         Some(c) => c,
@@ -62,7 +56,6 @@ fn rx_escape(p) {
 }
 
 fn rx_parse_set(p) {
-    // after '['
     let neg = false;
     match rx_peek(p) {
         Some('^') => { neg = true; p.i += 1; }
@@ -89,7 +82,6 @@ fn rx_parse_set(p) {
             }
             lo = e.c;
         }
-        // a range lo-hi, unless the '-' is last
         let is_range = false;
         if p.i + 1 < p.cs.len() && p.cs[p.i] == '-' && p.cs[p.i + 1] != ']' {
             is_range = true;
@@ -115,7 +107,6 @@ fn rx_parse_set(p) {
 }
 
 fn rx_parse_alt(p) {
-    // alternatives separated by '|', ended by ')' or the end of the pattern
     let alts = [];
     let seq = [];
     loop {
@@ -179,7 +170,6 @@ fn rx_parse_alt(p) {
         } else {
             #{ t: "char", c: c }
         };
-        // a quantifier
         match rx_peek(p) {
             Some('*') => { p.i += 1; node = #{ t: "rep", node: node, min: 0, max: -1 }; }
             Some('+') => { p.i += 1; node = #{ t: "rep", node: node, min: 1, max: -1 }; }
@@ -198,8 +188,7 @@ fn rx_parse_alt(p) {
     Ok(alts)
 }
 
-// Can this node match the empty string? A repeat of one is refused (it would
-// loop without consuming), so the matcher needs no loop guard of its own.
+// A repeat of a nullable node is refused: it would loop without consuming.
 fn rx_nullable(node) {
     let t = node.t;
     if t == "bol" || t == "eol" {
@@ -245,7 +234,7 @@ fn rx_emit_node(node, prog) {
             prog.push(#{ op: 7, n: node.idx * 2 + 1 });
         }
     } else {
-        // rep: min 0 or 1, max 1 or unbounded (the parser admits only * + ?)
+        // min 0 or 1, max 1 or unbounded (the parser admits only * + ?)
         if rx_nullable(node.node) {
             return Err("regex: a repeat of something that can match nothing is not supported");
         }
@@ -321,7 +310,6 @@ fn rx_cls_has(name, c) {
     if name == "s" { rx_is_space(c) } else if name == "d" { rx_is_digit(c) } else { rx_is_word(c) }
 }
 
-// Does a single-character node accept c? (kinds: char any set cls)
 fn rx_one(node, c) {
     let t = node.t;
     if t == "char" {
@@ -347,9 +335,8 @@ fn rx_single(node) {
     node.t == "char" || node.t == "any" || node.t == "cls" || node.t == "set"
 }
 
-// One attempt from `start`: depth-first with an explicit stack of
-// [pc, pos, saves], preferring the first branch of each split. Answers the
-// saves (slot 0 and 1 are the whole match) or an empty list for no match.
+// One attempt from `start`: depth-first with an explicit stack of [pc, pos, saves].
+// Answers the saves (slots 0 and 1 are the whole match) or [] for no match.
 fn rx_run(prog, text, start, nslots) {
     let saves0 = [];
     let i = 0;
@@ -426,7 +413,6 @@ fn regex_search_in(re, text) {
     None
 }
 
-// pattern text in, Ok(match-or-None) / Err(reason) out.
 fn regex_search(pattern, text) {
     let re = regex_compile(pattern)?;
     Ok(regex_search_in(re, text))

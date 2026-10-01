@@ -1,9 +1,7 @@
 #!/usr/bin/env bash
-# fb.sh <open|snapshot|click|back> [arg]: a four-page fake of en.wikipedia.org for
-# running the wiki-hop graph where there is no Chromium. NOT the browser plugin and
-# not shipped: a test aid. It answers the shapes browser_open/snapshot/click/back
-# answer (the snapshot head block, the tree with [ref=eN] and "- /url:" lines), from
-# the files in site/, and keeps "where am I" in $FB_STATE (cur and hist files).
+# fb.sh <open|snapshot|click|back> [arg]: a four-page fake of en.wikipedia.org, so wiki-hop
+# runs without Chromium. It answers the shapes the real tools do, from site/, and keeps
+# "where am I" in $FB_STATE.
 here=$(cd "$(dirname "$0")" && pwd)
 st=${FB_STATE:-/tmp/jevrig/fb}
 mkdir -p "$st"

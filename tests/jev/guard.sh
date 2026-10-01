@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# guard.sh: sourced by every script in tests/jev/ that installs a plugin into an
-# eidolon config (the fake `browser` above all). It refuses unless both
-# XDG_CONFIG_HOME and HOME are throwaway directories: XDG_CONFIG_HOME is where
-# plugins and policy go, and HOME matters because the jev tools read their token
-# from `~/.config/eidolon/jev.token`.
+# guard.sh: sourced by scripts that install the fake `browser`. Refuses unless XDG_CONFIG_HOME
+# and HOME are throwaway directories (the jev tools read ~/.config/eidolon/jev.token).
 #
 #   . "$(dirname "$0")/guard.sh"; require_temp_config
 _under_tmp() {

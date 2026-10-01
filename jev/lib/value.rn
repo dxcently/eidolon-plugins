@@ -1,17 +1,12 @@
-// jev/lib/value.rn -- values and `{{path}}` templates, the part of the graph
-// interpreter that has no effects.
+// Values and `{{path}}` templates: the part of the interpreter with no effects. All of
+// lib/ is one compile unit. Two constraints from the Rune this runs on:
 //
-// Every file in lib/ is compiled in front of a workflow as one unit, so a name
-// here is a name everywhere in lib/. Two things the design of these files is
-// built around, both learned from the Rune this runs on:
-//
-//   * An object's key order is not stable (it is a hash map), and a workflow is
-//     replayed from its journal on resume: anything that decides by key order
-//     must sort the keys first. `canon` and `sorted_keys` are the two doors.
-//   * A closure that calls a lib function must be reachable from every workflow,
-//     or linking the unit fails (unreachable functions are dropped, their
-//     closures' callees with them). So: no closures in lib/ except in regex.rn,
-//     which every workflow reaches through the interpreter.
+//   * An object's key order is not stable, and a workflow is replayed from its journal
+//     on resume, so anything that decides by key order sorts first: `canon` and
+//     `sorted_keys` are the two doors.
+//   * A closure that calls a lib function must be reachable from every workflow, or
+//     linking fails. So no closures in lib/ except regex.rn, which every workflow
+//     reaches through the interpreter.
 
 fn is_null(v) {
     match v {
@@ -43,8 +38,7 @@ fn sorted_keys(o) {
     ks
 }
 
-// JSON with sorted keys and Python's default separators (", " and ": "),
-// which is what the interpreter this replaces printed an object as.
+// JSON with sorted keys and Python's default separators (", " and ": ").
 fn canon(v) {
     match v {
         () => "null",
@@ -76,8 +70,7 @@ fn canon(v) {
     }
 }
 
-// The text a value has when it is put in a template: a list is newline-joined,
-// an object is JSON, null is nothing.
+// A list is newline-joined, an object is JSON, null is nothing.
 fn stringify(v) {
     match v {
         () => "",
@@ -97,7 +90,7 @@ fn stringify(v) {
     }
 }
 
-// A key of an object that may not be an object: Some(value) or None.
+// Some(value) for a key of `o`, None when absent or `o` is not an object.
 fn oget(o, key) {
     if o is Object {
         o.get(key)
@@ -165,8 +158,7 @@ fn is_path(s) {
     any
 }
 
-// `{{path}}` placeholders replaced by their text; a path that is not there is
-// nothing, with a warning; text that is not a placeholder is left alone.
+// Missing paths render as nothing, with a warning.
 fn render(t, scope, warns) {
     let out = "";
     let first = true;
@@ -195,10 +187,9 @@ fn render(t, scope, warns) {
     out
 }
 
-// Like render, but a template that is exactly one placeholder gives the value
-// itself (a list stays a list, as a copy: what a template hands out is never the
-// graph's or the context's own value, which a tool call would otherwise move
-// out of it); a missing path is null, not "".
+// Like render, but a template that is exactly one placeholder gives the value itself,
+// as a copy (a tool call would otherwise move it out of the graph's or context's own
+// value). A missing path is null, not "".
 fn render_value(t, scope, warns) {
     let tr = t.trim();
     if tr.starts_with("{{") && tr.ends_with("}}") && tr.len() >= 4 {
@@ -220,7 +211,6 @@ fn render_value(t, scope, warns) {
     render(t, scope, warns)
 }
 
-// Every string leaf of a JSON-shaped value through render_value.
 fn render_deep(v, scope, warns) {
     if v is String {
         render_value(v, scope, warns)
@@ -241,7 +231,6 @@ fn render_deep(v, scope, warns) {
     }
 }
 
-// A deep copy, through JSON.
 fn copy_json(v) {
     match json::from_string(json::to_string(v).unwrap_or("null")) {
         Ok(c) => c,
@@ -262,7 +251,6 @@ fn path_push(path, seg) {
     out
 }
 
-// The first n segments.
 fn path_take(path, n) {
     let out = [];
     let i = 0;
@@ -295,7 +283,6 @@ fn common_prefix_len(a, b) {
     i
 }
 
-// The first `n` characters of a string, or its last `n`.
 fn chars_head(s, n) {
     if s.len() <= n {
         return s;
@@ -330,8 +317,7 @@ fn chars_tail(s, n) {
     out
 }
 
-// The run's arguments with `defaults` filled in for any key that is absent, null
-// or an empty string. Arguments that are not an object count as none.
+// `defaults` fill any key that is absent, null or "". Non-object arguments count as none.
 fn with_defaults(args, defaults) {
     let out = #{};
     if args is Object {
@@ -351,11 +337,9 @@ fn with_defaults(args, defaults) {
     out
 }
 
-// A tool action's `input`: render_deep, except that a top-level key whose value is
-// exactly one `{{input.<name>}}` placeholder is left out when the run was not given
-// that argument (absent, null or ""). That is how a graph passes an optional run
-// argument on: the tool sees the key only when there is something in it, instead
-// of a null its schema would refuse.
+// render_deep, except that a top-level key whose value is exactly one `{{input.<name>}}`
+// is left out when the run was not given that argument, so the tool never sees a null
+// its schema would refuse.
 fn render_input(v, scope, warns) {
     if !(v is Object) {
         return render_deep(v, scope, warns);

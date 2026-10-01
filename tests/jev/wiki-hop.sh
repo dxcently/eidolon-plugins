@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# wiki-hop.sh: run wiki-hop end to end with no Chromium and no model. Installs jev
-# and the FAKE `browser` (tests/jev/fake-browser) into the config XDG_CONFIG_HOME
-# names, so that and HOME must be temp dirs (guard.sh refuses otherwise), starts
-# stub_service.py on a free port, and runs `Cat` -> `Ancient Egypt`.
+# wiki-hop.sh: run wiki-hop end to end with no Chromium and no model: installs jev and the
+# fake `browser` into the temp config XDG_CONFIG_HOME names (guard.sh refuses otherwise),
+# starts stub_service.py and runs `Cat` -> `Ancient Egypt`.
 #
 #   t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state \
 #     XDG_DATA_HOME=$t/data bash tests/jev/wiki-hop.sh

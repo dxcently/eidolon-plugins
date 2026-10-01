@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
-# no-browser-names.sh: jev must never register a `browser_*` tool; those names
-# belong to the real `browser` plugin (the one in this repo, port 8090,
-# browser.token). Two checks:
-#   1. static: no jev/tools/*.rn declares a name starting with `browser_`, and
-#      plugin.rn claims no verb that would join to one;
-#   2. if XDG_CONFIG_HOME is a temp dir with jev installed, `eidolon plugins`
-#      lists no `browser_` verb under jev.
-# Exit 1 if either finds one.
+# no-browser-names.sh: jev must never register a `browser_*` tool; those names belong to
+# the real `browser` plugin. Checks that no jev/tools/*.rn declares one and plugin.rn claims
+# none, and, in a temp config with jev installed, that `eidolon plugins` lists none.
 set -euo pipefail
 here=$(cd "$(dirname "$0")/../.." && pwd)
 bad=0

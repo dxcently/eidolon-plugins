@@ -248,18 +248,6 @@ Anything else parks again, and each park counts against the graph's
 `escalations` budget. `stop` ends the run as a failed run whose report says
 `stopped`.
 
-### What replaced the old verbs
-
-| was | now |
-|---|---|
-| `jev_run {graph, input}` | `eidolon workflow run $P <graph> --args '<input>'` |
-| `jev_resume {run, pick}` | `eidolon workflow resume <session> <run> --plugin $P --answer <pick>` |
-| `jev_stop {run}` | answer a park with `stop`; or interrupt the `workflow run` process, which leaves a journal `resume` can pick up |
-| `jev_runs` | `eidolon sessions`, and `eidolon log <session>` for one; every run is a session. Exit code: 0 completed, 1 parked, 2 failed, 3 refused |
-| `jev_order` | dropped: steering is at parks only |
-| `jev_warrant`, `warrant` blocks | dropped: the plugin's verbs are vouched, anything else is judged per call; a graph's `meta.jev.tools` is the list of tools its own actions may call |
-| `jev_choose`, `jev_entail` | the same names, the same service |
-
 ## Drawing a run
 
 `jev_graph {graph}` returns the graph as JSON, for whatever draws it:

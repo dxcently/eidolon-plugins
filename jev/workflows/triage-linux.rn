@@ -1,21 +1,6 @@
-// jev/workflows/triage-linux.rn -- run the `triage-linux` graph (graphs/triage-linux.json).
-//
-//   eidolon workflow run <plugin dir> triage-linux
-//   eidolon workflow run <plugin dir> triage-linux --args '{"ssh":"user@host"}'
-//
-// What is this box, what does it expose, what is running, and does anything look
-// out of place -- from a fixed menu of read-only commands, each its own vouched
-// tool (`jev_os_release`, `jev_uname`, ... `jev_processes`). The chooser picks the
-// next command; an NLI guard ends a question early when its answer is already
-// known. Parks on a person when the chooser is unsure or unreachable. Needs the jev
-// service (README, Prerequisites).
-//
-// Where the commands run is an argument: here by default, `distro` for a WSL
-// distribution, `ssh` (and `ssh_port`) for another host.
-//
-// The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (tests/jev/pin.sh).
+// `triage-linux`: a chooser walks a fixed menu of read-only recon commands.
 
+// PIN is the sha256 of graphs/triage-linux.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "triage-linux";
 const PIN = "sha256:388fbebbc8abebfd1a70527d77ecb011bc30ca01de95788b9092801b22d9324e";
 

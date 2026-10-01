@@ -1,18 +1,7 @@
-// jev/workflows/triage-botforge.rn -- run the `triage-botforge` graph (graphs/triage-botforge.json).
-//
-//   eidolon workflow run <plugin dir> triage-botforge
-//   eidolon workflow run <plugin dir> triage-botforge --args '{"ssh":"user@host","ssh_port":22}'
-//
-// triage-linux for an unattended run on a small chooser: no NLI guards, floor and
-// margin 0, so the chooser's pick is always taken and a run never parks on low
-// confidence. The commands are the same nine read-only recon commands; they run
-// over ssh on the BotForge range guest (mford@127.0.0.1, port 2222) unless `ssh`
-// and `ssh_port` say otherwise. Nothing it runs can change the Aeacus score. Needs
-// the jev service for `jev_choose` (README, Prerequisites), not `jev_entail`.
-//
-// The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (tests/jev/pin.sh).
+// `triage-botforge`: triage-linux for unattended runs. No NLI guards and floor and
+// margin 0, so the chooser's pick is always taken and a run never parks.
 
+// PIN is the sha256 of graphs/triage-botforge.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "triage-botforge";
 const PIN = "sha256:03d2e05600b06d35b90d9d658e3a5b73c2c006108baf15cfa977770885264c2f";
 

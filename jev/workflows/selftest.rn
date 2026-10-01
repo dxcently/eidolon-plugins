@@ -1,13 +1,7 @@
-// jev/workflows/selftest.rn -- the interpreter checked against itself, with no
-// model, no network and no tool but jev_mark and jev_graph. It runs one small graph (nested
-// states, a forced pick, `count` and `equals` guards, `assign`/`push`,
-// `entry`/`exit`, `onDone`, a detour and a return through `history`) and checks
-// the regex engine, the template engine and the snapshot parser against fixed
-// inputs.
-//
-//   eidolon workflow run <plugin dir> selftest
-//
-// completes with a line per check, and fails naming the checks that did not hold.
+// The interpreter checked against itself: no model, no network, no tool but jev_mark and
+// jev_graph. One small graph exercises nesting, a forced pick, guards, `assign`/`push`,
+// `entry`/`exit`, `onDone` and `history`; the regex engine, the template engine and the
+// snapshot parser run against fixed inputs. Fails naming the checks that did not hold.
 
 pub fn workflow() {
     #{
@@ -104,7 +98,6 @@ fn rx_group(pattern, text, name) {
     }
 }
 
-// The labels of a state's `transitions` menu, in the order build_options gives them.
 fn menu_labels(text, path) {
     let labels = [];
     match load_graph(text) {
@@ -195,8 +188,7 @@ pub async fn run(args) {
     let unknown = run_graph("{\"id\":\"u\",\"initial\":\"s\",\"states\":{\"s\":{\"always\":[{\"guard\":{\"type\":\"contains\",\"params\":{}},\"target\":\"s\"}]}}}", #{}).await;
     check(out, bad, "graph refuses a guard it does not have", stringify(oget_or(unknown, "content", "")).contains("not supported"), true);
 
-    // the plugin's own graphs: each is read through jev_graph (in pages) and must
-    // load, i.e. use only what the interpreter has
+    // the plugin's own graphs, read through jev_graph in pages, must load
     for id in ["ctf-juice-recon", "find-related", "triage-botforge", "triage-linux", "triage-wsl", "wiki-hop"] {
         let loaded = match read_graph(id).await {
             Ok(t) => match load_graph(t) {
@@ -230,8 +222,7 @@ pub async fn run(args) {
         Err(e) => check(out, bad, "jev_graph draws", "error: " + `${e}`, "drawn"),
     }
 
-    // a `transitions` menu is in the graph's own event order, not alphabetical:
-    // `recover` lists CONTINUE before ABORT, and a nested state keeps its order too
+    // a `transitions` menu keeps the graph's event order: `recover` lists CONTINUE before ABORT
     let rec_labels = match read_graph("triage-linux").await {
         Ok(t) => menu_labels(t, ["recover"]),
         Err(e) => ["unreadable: " + e],

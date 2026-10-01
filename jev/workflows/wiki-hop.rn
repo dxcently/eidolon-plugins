@@ -1,21 +1,8 @@
-// jev/workflows/wiki-hop.rn -- run the `wiki-hop` graph (graphs/wiki-hop.json).
-//
-//   eidolon workflow run <plugin dir> wiki-hop --args '{"start":"Cat","goal":"Egypt"}'
-//
-// Opens the start article and follows article links toward the goal, one link at a
-// time, until the page's title or heading is the goal (exact, or an entailment of
-// "this is the article about <goal>"). Each hop: snapshot the page, ask the chooser
-// to score the links, click the best; a link the chooser is unsure about parks the
-// run on a person (`eidolon workflow resume ... --answer <n>`).
-//
-// It drives the browser plugin (`browser_open`, `browser_snapshot`, `browser_click`,
-// `browser_back`), confined to https://en.wikipedia.org, and needs the jev service
-// for `jev_choose` and `jev_entail` (README, Prerequisites). A hop costs about five
-// steps of the host's 200-step cap, so a run is bounded at roughly thirty hops.
-//
-// The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (tests/jev/pin.sh).
+// `wiki-hop`: follow Wikipedia links from `start` to `goal` through the browser plugin.
+// A hop costs about five steps of the host's 200-step cap, so a run is bounded at
+// roughly thirty hops.
 
+// PIN is the sha256 of graphs/wiki-hop.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "wiki-hop";
 const PIN = "sha256:2db16e39c7016e410bd4f8c96f75255944387762ff4be080af821d94e2124bab";
 

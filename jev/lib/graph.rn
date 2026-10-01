@@ -1,14 +1,7 @@
-// jev/lib/graph.rn -- a graph document, read once and checked against the
-// features this interpreter has. The graphs are state charts: states nested
-// by `states`/`initial`, `entry`/`exit` actions, `always` and `on` transitions,
-// `onDone`, shallow `history`, and a `meta.choose` block that offers a menu.
-//
-// This file is the line between "the graph says it" and "the interpreter does
-// it". A graph that uses something the interpreter does not have is refused
-// here, by name, before any step runs -- never run with the feature ignored.
+// A graph document, read once. One that uses a feature the interpreter lacks is
+// refused at load, by name, never run with the feature ignored.
 
-// Every state of the document by dotted path ("investigate.identify"), parents
-// first. Also checks each one.
+// Every state by dotted path ("investigate.identify"), parents first; checks each.
 fn collect_states(states, prefix, out, errors) {
     for name in sorted_keys(states) {
         let st = states[name];
@@ -118,12 +111,9 @@ fn check_state(path, st, errors) {
     }
 }
 
-// The keys of every object in a JSON text, in the order the text gives them,
-// by path ("/states/recover/on" -> ["CONTINUE", "ABORT"]; the root is ""). A
-// parsed object does not keep that order (Rune sorts it), and a `transitions`
-// menu is in the graph's own event order, so the order is read off the text.
-// The text has already parsed as JSON; this only follows its quotes, braces
-// and commas.
+// The keys of every object in a JSON text, in text order, by path ("/states/recover/on"
+// -> ["CONTINUE", "ABORT"]). A parsed object does not keep that order (Rune sorts it)
+// and a `transitions` menu follows the graph's own event order.
 fn key_orders(text) {
     let cs = text.chars().collect::<Vec>();
     let orders = #{};
@@ -181,8 +171,7 @@ fn key_orders(text) {
     orders
 }
 
-// The `on` events of an object, document order first (`order` is the key list
-// the text gave), then any the text did not give, sorted. Never drops one.
+// The `on` events in document order (`order`), then any the text did not give, sorted.
 fn events_in_order(on, order) {
     let out = [];
     let seen = #{};
@@ -202,8 +191,7 @@ fn events_in_order(on, order) {
     out
 }
 
-// The graph at hand: the parsed document and its state table, or Err(reason)
-// naming everything unsupported.
+// The parsed document and its state table, or Err(reason) naming everything unsupported.
 fn load_graph(text) {
     let doc = match json::from_string(text) {
         Ok(d) => d,
@@ -221,7 +209,6 @@ fn load_graph(text) {
     if !paths.contains_key(`${oget_or(doc, "initial", "")}`) {
         errors.push("initial '" + `${oget_or(doc, "initial", "")}` + "' is not a top-level state");
     }
-    // each state remembers the order its `on` events are written in
     let orders = key_orders(text);
     for p in sorted_keys(paths) {
         let st = paths[p];
@@ -260,7 +247,7 @@ fn graph_budget(g, key, dflt) {
     oget_or(oget_or(g.jev, "budget", #{}), key, dflt)
 }
 
-// The state at a path (a list of names). The root is not a state.
+// The root is not a state.
 fn state_at(g, path) {
     g.paths[path_dot(path)]
 }
@@ -276,8 +263,7 @@ fn is_compound(st) {
     }
 }
 
-// A transition's target as a path: `#id.a.b` is absolute, a bare name is a
-// sibling of the state the transition is declared on. None when it is neither.
+// `#id.a.b` is an absolute path, a bare name a sibling of the declaring state; None otherwise.
 fn resolve_target(g, from_path, target) {
     let path = [];
     if target.starts_with("#") {

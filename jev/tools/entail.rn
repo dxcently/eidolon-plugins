@@ -1,10 +1,4 @@
-// `jev_entail`: the jev service's `entail` (jev/server.py in the Minerva repo).
-//
-// openjev, a Qwen3.5-4B fine-tuned as a 3-way NLI cross-encoder, scores a premise
-// against each hypothesis and answers
-// `{"results": [{hypothesis, label, scores: {contradiction, entailment, neutral}}]}`.
-// The graph interpreter calls this for an `entails` guard. The service is not part
-// of this plugin; see the README, Prerequisites.
+// `jev_entail`: the jev service's `entail`. The service is not part of this plugin; see the README.
 pub fn manifest() {
     #{
         name: "jev_entail",
@@ -42,12 +36,7 @@ pub async fn call(input) {
     Ok(json::to_string(out)?)
 }
 
-// Everything below is the same in jev_choose.rn and jev_entail.rn: upstream
-// eidolon compiles each tool file on its own, and a tool file is meant to be
-// handed over whole.
-
-// The jev service (jev/server.py in the Minerva repo). Change the port here and in
-// the service's EIDOLON_SERVICE_PORT together; 8090 is the browser plugin's.
+// Port 8091 (8090 is the browser plugin's); the service reads it from EIDOLON_SERVICE_PORT.
 fn service() {
     #{
         name: "jev",
@@ -58,7 +47,6 @@ fn service() {
     }
 }
 
-// POST {method, args} to /call; the answer is {ok, result} or {ok: false, error}.
 async fn call_service(method, args) {
     let body = json::to_string(#{ "method": method, "args": args })?;
     let reply = json::from_string(eidolon::api_request(service(), "POST", "/call", Some(body)).await?)?;

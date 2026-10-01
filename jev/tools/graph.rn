@@ -1,24 +1,11 @@
-// `jev_graph`: a graph of this plugin, as text or as a drawing.
+// `jev_graph`: a graph of this plugin as a drawing, as its exact text (`raw`), or in
+// pages (`from`). A workflow cannot read a file, so it asks here. The harness spills a
+// tool answer over about 8 KB to a file, hence pages of about 5000 characters;
+// `run_pinned` joins them, hashes the text and refuses a graph its workflow does not pin.
 //
-// The graphs are files in this plugin's `graphs/`, and a workflow cannot read a
-// file, so it asks for one here. Three forms:
-//
-//   raw: true       the file's text exactly as it is on disk (small graphs only:
-//                   the harness spills a tool answer over about 8 KB to a file and
-//                   hands back a preview, so a bigger graph comes in pages)
-//   from: N         one page of the file, from line N (1-based): a first line
-//                   `jev-page next=M` (M the line the next page starts at, 0 when
-//                   this was the last), then the lines themselves, each ending in a
-//                   newline. A page is at most about 5000 characters. The pages
-//                   joined are the file. This is how lib/interp.rn's `run_pinned`
-//                   reads a graph: it hashes the joined text and refuses to run a
-//                   graph whose hash it does not pin.
-//   (neither)       the graph's drawing, for a viewer: JSON, described above `draw`
-//                   below.
-//
-// Where the plugin is: ${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}.
-// A copy under test sets EIDOLON_JEV_DIR. The graph id is checked to be letters,
-// digits and '-' before it reaches the command line, and `from` to be a number.
+// The plugin dir is ${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev};
+// a copy under test sets EIDOLON_JEV_DIR. The id and `from` are checked before they
+// reach the command line.
 
 pub fn manifest() {
     #{
@@ -98,20 +85,7 @@ pub async fn call(input) {
     Ok(json::to_string(draw(doc))?)
 }
 
-// --- the drawing ---------------------------------------------------------------
-//
-// {graph, description, initial, input, budget, tools, root_on, states, edges, marks}
-//
-//   states[]  {path, kind: leaf|compound|final|history, description?, initial?,
-//              choose?: {source: menu|lines|refs|transitions, options?, floor?, ask?},
-//              tools?: [names a state's actions call, as written]}
-//   edges[]   {from, to, kind: initial|always|on|onDone|history, event?, guard?, reenter?}
-//             from and to are dotted paths ("investigate.identify"); to is null for
-//             a transition with no target (its actions run and the state stays).
-//             root_on has the same shape for the events the root handles (ERROR),
-//             whose from is "*" (any state).
-//   marks     {tool: "jev_mark", kinds: [...]}: how a run's journal says which
-//             state is active (README, "Drawing a run").
+// The drawing's shape is in the README, "Drawing a run".
 
 fn is_null(v) {
     match v {
@@ -176,8 +150,7 @@ fn transitions_of(v) {
     out
 }
 
-// A target as a dotted path: `#id.a.b` is absolute, a bare name is a sibling of
-// the state the transition is declared on (a root transition's is top-level).
+// `#id.a.b` is an absolute path, a bare name a sibling of the declaring state (a root transition's is top-level).
 fn target_path(id, owner, target) {
     if target.starts_with("#") {
         let parts = [];

@@ -1,16 +1,6 @@
-// jev/workflows/triage-wsl.rn -- run the `triage-wsl` graph (graphs/triage-wsl.json).
-//
-//   eidolon workflow run <plugin dir> triage-wsl
-//   eidolon workflow run <plugin dir> triage-wsl --args '{"distro":"Debian"}'
-//
-// triage-linux run inside a WSL distribution (Ubuntu unless `distro` says
-// otherwise): the same commands through `wsl.exe -d <distro> -e bash -lc ...`, so a
-// Windows host triages its own Linux side without the host shell in between. Needs
-// wsl.exe, so a Windows host, and the jev service (README, Prerequisites).
-//
-// The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (tests/jev/pin.sh).
+// `triage-wsl`: triage-linux inside a WSL distribution through wsl.exe.
 
+// PIN is the sha256 of graphs/triage-wsl.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "triage-wsl";
 const PIN = "sha256:644c25ddaf28cfd75d26955de3a31b80c5451825b2b94f12030ef62e5aa4924f";
 

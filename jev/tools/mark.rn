@@ -1,13 +1,6 @@
-// `jev_mark`: says where a jev graph run is, and does nothing else.
-//
-// The interpreter (lib/interp.rn) calls this as a workflow step each time the
-// run enters a state, parks, or ends. The step's *input* is the record -- {graph,
-// kind, state, step, actions, outcome?} -- and a run's journal keeps every step's
-// input, so whatever draws the graph reads the active node as the last
-// `jev_mark` step of the run (`eidolon log --json <session>`; the step's tool is
-// `jev_mark`, its input is the record). The tool itself changes nothing and
-// reads nothing: it exists so the position is a journaled, replayable step
-// like every other, rather than a side channel.
+// `jev_mark`: a no-op whose input is the record of where a run is. The interpreter
+// calls it as a step, so a viewer reads the active node as the last `jev_mark`
+// step in the run's journal.
 pub fn manifest() {
     #{
         name: "jev_mark",

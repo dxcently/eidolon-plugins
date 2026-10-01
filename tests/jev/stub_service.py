@@ -1,20 +1,13 @@
 #!/usr/bin/env python3
-"""A stand-in for the jev service, for tests. NOT the real chooser and NOT an NLI model.
-
-The real service (jev/server.py in the Minerva repo) needs torch and, for `entail`,
-a ~9 GB model. This answers the same contract -- POST /call {method, args} with a
-bearer token, {ok, result} back -- from stdlib Python, deterministically, so a graph
-can be run end to end without either. What it proves is the plumbing: the tools'
-requests and the interpreter's reading of the answers. What it says about the
-graphs' *judgement* is nothing: the numbers below are rules, not a model.
+"""A stand-in for the jev service, for tests: rules, not a chooser and not an NLI model.
+It answers the real contract (POST /call {method, args} with a bearer token, {ok, result}
+back) deterministically, so it proves the plumbing and says nothing about judgement.
 
   choose   MODE=first (default)  0.9 on the first option, the rest share 0.1
            MODE=flat             every option equal (so a floor parks the run)
            MODE=last             0.9 on the last option
            MODE=none             answers an error, like a service that is up but broken
-           An option that is word-for-word a line of the context's first
-           "Target article: X" line gets 0.95 (wiki-hop's own `prefer` rule does the
-           same job in the interpreter; this keeps the stub honest if it is dropped).
+           An option equal to the context's first "Target article: X" gets 0.95.
   entail   entailment 0.9 when most of the hypothesis's longer words appear in the
            premise, else neutral 0.8. MODE=none errors here too.
 

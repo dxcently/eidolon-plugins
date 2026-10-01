@@ -1,17 +1,11 @@
-// jev/lib/options.rn -- a state's `meta.choose` block: where the menu comes from
-// (`menu`, `lines`, `refs`, or the state's own `transitions`), what is dropped
-// from it (duplicates, `exclude`, `max`), what is added (`also`), how options
-// are labelled (`label`), and which are taken without asking the scorer
-// (`prefer`).
-//
-// An option is #{ label, event, data }. `data` carries what the source knew:
-// a menu item's other fields, a link's ref/url/name, a line's text and index.
+// A state's `meta.choose`: where the menu comes from, what is dropped or added, and
+// which options are taken without asking the scorer. An option is
+// #{ label, event, data }; `data` is what the source knew about it.
 
 fn make_option(label, event, data) {
     #{ label: label, event: event, data: data }
 }
 
-// Menu items [{label, event?, ...}] as options.
 fn options_from_menu(items) {
     let out = [];
     for item in items {
@@ -47,7 +41,6 @@ fn options_from_lines(cfg, scope) {
     out
 }
 
-// The records `of` resolves to: a parsed observation's refs.
 fn refs_of(rt, resolved) {
     if resolved is Object {
         let text = oget_or(resolved, "text", ());
@@ -111,8 +104,7 @@ fn options_from_refs(rt, cfg, scope) {
             continue;
         }
         if !is_null(url_re) {
-            // the menu bound: a link with no url, or one outside the bound, is
-            // never offered, whatever its text says
+            // a link with no url, or one outside the bound, is never offered
             if is_null(r.url) || r.url == "" || regex_search_in(url_re, r.url).is_none() {
                 continue;
             }
@@ -123,8 +115,7 @@ fn options_from_refs(rt, cfg, scope) {
     Ok(out)
 }
 
-// The state's outgoing events (not the reserved ones), in the order the graph
-// writes them (`on_order`, set when the graph is loaded).
+// The state's outgoing events except the reserved ones, in the graph's own order (`on_order`).
 fn options_from_transitions(st) {
     let out = [];
     let on = oget_or(st, "on", #{});
@@ -145,7 +136,6 @@ fn options_from_transitions(st) {
     out
 }
 
-// Drop repeats of a label, keeping the first; the second element counts them.
 fn collapse_duplicates(opts) {
     let seen = #{};
     let out = [];
@@ -244,8 +234,6 @@ fn build_options(rt, st, choose, scope) {
     Ok(raw)
 }
 
-// The text the scorer reads: `choose.context`, or the goal (if the run has
-// one), the state's description and the last observation.
 fn chooser_context(choose, scope, st, warns) {
     match oget(choose, "context") {
         Some(tpl) => { return render(tpl, scope, warns); }
@@ -267,9 +255,7 @@ fn chooser_context(choose, scope, st, warns) {
     }
 }
 
-// `choose.prefer`: rules tried in order, options in menu order within a rule;
-// the first pair that passes is taken without asking the scorer. Ok(index), or
-// Ok(-1) when nothing is preferred.
+// Ok(index) of the first option a `prefer` rule passes (rules in order, options in menu order), or Ok(-1).
 async fn first_preferred(rt, prefer, opts, scope) {
     for rule in prefer {
         let i = 0;

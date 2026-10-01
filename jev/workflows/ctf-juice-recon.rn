@@ -1,18 +1,6 @@
-// jev/workflows/ctf-juice-recon.rn -- run the `ctf-juice-recon` graph (graphs/ctf-juice-recon.json).
-//
-//   eidolon workflow run <plugin dir> ctf-juice-recon
-//   eidolon workflow run <plugin dir> ctf-juice-recon --args '{"distro":"Ubuntu"}'
-//
-// Reads the response headers and robots.txt of an OWASP Juice Shop lab listening
-// on 127.0.0.1:3001, with two fixed read-only curl commands (`jev_juice_headers`,
-// `jev_juice_robots`), and reports both as notes. No chooser, no model. With
-// `distro` the curls run inside that WSL distribution (where the lab listens);
-// without it, on this machine. Local lab only: the URL is in the tools, not an
-// argument.
-//
-// The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (tests/jev/pin.sh).
+// `ctf-juice-recon`: the headers and robots.txt of a local Juice Shop lab; no chooser, no model.
 
+// PIN is the sha256 of graphs/ctf-juice-recon.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "ctf-juice-recon";
 const PIN = "sha256:8b4d598619ea52087b662bd5314688388a85184334b37fa16aac3a6a2ce20e9e";
 

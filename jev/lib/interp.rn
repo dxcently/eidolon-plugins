@@ -1,20 +1,11 @@
-// jev/lib/interp.rn -- the graph interpreter: a Rune port of the part of jev's
-// automation interpreter (jev/automation/run.py) that the six graphs use.
+// The graph interpreter: the part of jev's automation interpreter the six graphs use.
+// It enters the initial state, then loops: take an `always` transition if one fires,
+// otherwise build the menu from `meta.choose`, take the `prefer`red option or ask the
+// scorer, park on a person when it is not sure enough, and fire the picked event.
 //
-// A graph is a state chart. The interpreter enters the initial state and then
-// loops: check the state's `always` transitions; if none fires, build the menu
-// from `meta.choose`, take the `prefer`red option or ask the scorer, park on a
-// person when the scorer is not sure enough, and fire the picked option's
-// event; an event's transition runs its actions and moves to its target. A
-// top-level `final` state ends the run.
-//
-// Every effect is a dispatched step (`eidolon::tool_call`): the actions' tools,
-// `jev_choose` and `jev_entail` for the scorer, `jev_mark` for the state log, and
-// `eidolon::park` for a person. The program is deterministic given those
-// answers -- no clock, no key-order dependence -- so a resumed run replays its
-// journal and arrives at the same point. What that costs: no wall-clock budget
-// (`wall_s` is not enforced), and the step cap upstream gives a workflow (200)
-// is the real bound on a long walk.
+// Every effect is a dispatched step (`eidolon::tool_call`, `eidolon::park`), and
+// nothing depends on a clock or on key order, so a resumed run replays its journal to
+// the same point. Hence no `wall_s` budget; the host's 200-step cap bounds a long walk.
 //
 // Control flow is Err(#{ k, ... }) carried by `?`:
 //   reached  a top-level final state was entered      stopped  a person said stop
@@ -33,8 +24,7 @@ fn num(v) {
     if v is i64 || v is u64 { v as f64 } else { v }
 }
 
-// A tool error that is the harness refusing, not the tool failing: the run
-// stops there instead of treating it as a failed action.
+// The harness refusing, not the tool failing: the run stops instead of firing ERROR.
 fn tool_fatal(e) {
     tool_refused(e) || e.contains("the run passed its step") || e.contains("the run passed its spend budget")
 }
@@ -89,11 +79,7 @@ fn tool_allowed(rt, name) {
     false
 }
 
-// --- the state log -----------------------------------------------------------
-
-// `jev_mark` is the one place the interpreter says where it is: a step whose
-// input is {graph, kind, state, ...}. A reader of the run's journal finds the
-// active node as the last such step. See README, "Drawing a run".
+// The one place the interpreter says where it is (README, "Drawing a run").
 async fn mark(rt, kind, state, extra) {
     let input = #{ graph: rt.g.id, kind: kind, state: state, step: rt.counts.steps, actions: rt.counts.actions };
     for (k, v) in extra {
@@ -111,8 +97,6 @@ async fn mark(rt, kind, state, extra) {
     }
 }
 
-// --- actions -----------------------------------------------------------------
-
 fn get_at(context, dotted) {
     let node = context;
     for seg in dotted.split(".") {
@@ -124,7 +108,6 @@ fn get_at(context, dotted) {
     node
 }
 
-// The list at a dotted path of the context, made (and made a list) if need be.
 fn ensure_list_at(context, dotted) {
     let segs = dotted.split(".").collect::<Vec>();
     let node = context;
@@ -163,9 +146,7 @@ async fn run_actions(rt, actions) {
     Ok(())
 }
 
-// docs: "evidence is typed at the point it is extracted" -- the pattern's named
-// groups become fields of context.<into>; a pattern that matches nothing is a
-// failed observation, not an empty one.
+// The pattern's named groups become fields of context.<into>; no match is a failed observation, not an empty one.
 fn run_capture(rt, params) {
     let value = match resolve(params.path, scope_of(rt)) {
         Some(v) => v,
@@ -245,10 +226,7 @@ async fn run_tool_action(rt, params) {
     Ok(())
 }
 
-// --- entering and leaving states ----------------------------------------------
-
-// A history state is its parent's last active child, or its own `target` if the
-// parent was never entered.
+// A history state is its parent's last active child, or its own `target` if the parent was never entered.
 fn resolve_history_chain(rt, path) {
     let st = state_at(rt.g, path);
     if oget_or(st, "type", "") != "history" {
@@ -340,10 +318,9 @@ async fn enter(rt, from_path, target_path) {
     Ok(())
 }
 
-// One transition: leave, run its actions, enter. No target is internal: only
-// the actions run. `owning` is the state it was declared on, which a relative
-// target is resolved against; leaving and entering are relative to where the
-// run actually is, which can be deeper.
+// One transition: leave, run its actions, enter. No target is internal (only the actions run).
+// `owning` is the state it was declared on, which a relative target resolves against;
+// leaving and entering are relative to where the run is, which can be deeper.
 async fn execute_transition(rt, owning, tr) {
     let actions = oget_or(tr, "actions", []);
     let target = match oget(tr, "target") {
@@ -369,10 +346,7 @@ async fn execute_transition(rt, owning, tr) {
     Ok(())
 }
 
-// --- events -------------------------------------------------------------------
-
-// An event is looked up in the active state, then each ancestor, then the
-// root's `on`. Ok(#{ owner, tr }) or Ok(()).
+// Looked up in the active state, then each ancestor, then the root's `on`. Ok(#{ owner, tr }) or Ok(()).
 async fn find_transition(rt, from_path, event) {
     let path = from_path;
     loop {
@@ -419,12 +393,9 @@ async fn fire_event(rt, from_path, event, event_data) {
     Ok("continue")
 }
 
-// --- parking on a person ------------------------------------------------------
-
-// Park until someone answers with an option (its number, or its exact label) or
-// `stop`. Ok(index); Err(stopped) on stop. An answer that is neither parks
-// again, each park counting against the graph's escalation budget, so a person
-// who keeps answering wrong ends the run rather than holding it.
+// Park until someone answers with an option (its number or exact label) or `stop`. Ok(index);
+// Err(stopped) on stop. Any other answer parks again against the escalation budget, so a
+// person who keeps answering wrong ends the run rather than holding it.
 async fn park_pick(rt, why, ask, labels, probs) {
     let base = "jev " + rt.g.id + ": " + why + "\n";
     if ask != "" {
@@ -485,10 +456,7 @@ async fn park_pick(rt, why, ask, labels, probs) {
     }
 }
 
-// --- the choose phase ----------------------------------------------------------
-
-// The ref the picked option carries must belong to the observation now in
-// context: a ref is good only against the snapshot that made it.
+// A ref is good only against the snapshot that made it.
 fn ref_is_current(rt, want) {
     let obs = oget_or(rt.context, "obs", ());
     if !(obs is Object) {
@@ -610,8 +578,6 @@ async fn choose_phase(rt, path, st, choose) {
     fire_event(rt, path, chosen.event, #{ option: data }).await
 }
 
-// --- the loop -------------------------------------------------------------------
-
 fn tool_event(e) {
     #{ error: e.text, reason: e.reason, tool: e.tool }
 }
@@ -684,8 +650,6 @@ async fn bootstrap(rt) {
     run_loop(rt).await
 }
 
-// --- the report ---------------------------------------------------------------
-
 fn dedupe(xs) {
     let seen = #{};
     let out = [];
@@ -726,7 +690,6 @@ fn report_of(rt) {
     r
 }
 
-// The run's own input, checked against what the graph says it needs.
 fn check_input(g, input) {
     let schema = oget_or(g.jev, "input", #{});
     for key in oget_or(schema, "required", []) {
@@ -742,11 +705,9 @@ fn check_input(g, input) {
     Ok(())
 }
 
-// Run a graph document (already hash-checked by the caller) on `input`.
-// Returns what a workflow's run() returns: the report as JSON text when the
-// graph reached a final state, a failed run (the report as the reason) when it
-// ran out of a budget, was stopped or errored, a failed run with a message when
-// the graph or the gate is wrong.
+// Run a graph document (already hash-checked by the caller) on `input`. Returns the report
+// as JSON text when a final state was reached; otherwise a failed run (the report as the
+// reason, or a message when the graph or the gate is wrong).
 async fn run_graph(text, input) {
     let g = match load_graph(text) {
         Ok(g) => g,
@@ -781,7 +742,6 @@ async fn run_graph(text, input) {
     }
     let report = canon(report_of(rt));
     if rt.outcome != "reached" {
-        // one last mark so a reader of the journal sees where it ended
         let _ = mark(rt, "end", path_dot(rt.active), #{ outcome: rt.outcome }).await;
         return fatal(report);
     }
@@ -827,9 +787,7 @@ async fn read_graph(name) {
     Ok(text)
 }
 
-// What every graph's workflow runs: fetch the graph's text through the
-// plugin's own `jev_graph` tool, refuse it unless it is the text this workflow
-// pins by hash, run it.
+// What every graph's workflow runs: fetch the text through `jev_graph`, refuse it unless it matches the pin, run it.
 async fn run_pinned(name, pin, input) {
     let text = match read_graph(name).await {
         Ok(t) => t,

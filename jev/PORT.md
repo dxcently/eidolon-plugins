@@ -1,9 +1,8 @@
 # Porting jev's automation graphs to an eidolon plugin
 
-This is the survey and the plan. It records what the old interpreter was, what
-the six graphs actually use of it, and how each piece lands in upstream eidolon.
-It is a working document for the port: when the README and this disagree about
-what ships, the README is right.
+The survey: what the old interpreter was, what the six graphs use of it, and how
+each piece lands in upstream eidolon. When the README and this disagree about what
+ships, the README is right.
 
 ## What is being ported
 
@@ -173,17 +172,7 @@ The host spills a tool answer over about 8 KB to a file and hands back a preview
 which is a different text and a different hash. The three triage graphs are
 10 KB, so `jev_graph` hands a graph out in pages (`from: N`, a `jev-page next=M`
 header, at most about 5000 characters a page) and `lib/interp.rn` joins them
-before hashing. This was found by the first triage run, not predicted.
-
-### The state log
-
-`jev_mark` is a no-op tool whose *input* is the record `{graph, kind, state, step,
-actions}`. The interpreter calls it when a leaf state is entered, a final state is
-entered, a person is asked, and when a run ends without a final state. A run's
-journal keeps every step's input, so a viewer reads the active node as the last
-`jev_mark` step (`eidolon log --json <session>`). `jev_graph {graph}` returns the
-nodes and edges to draw: states with path and kind, edges with from, to, kind,
-event and guard type, and where each menu comes from. The shape is in the README.
+before hashing.
 
 ## Limits of the host that shape the port
 
@@ -196,10 +185,9 @@ running.
   deterministic. Rune objects iterate in sorted key order, so the interpreter sorts keys
   wherever order decides nothing, and reads the order off the graph's text where
   it decides something: a `transitions` menu is in the graph's own event order
-  (`key_orders` in `lib/graph.rn`, stored per state as `on_order`), as the Python
-  one was. A first port listed them alphabetically, which put ABORT before
-  CONTINUE in `recover`; a chooser that leans to the first option would have
-  aborted. `selftest` checks it.
+  (`key_orders` in `lib/graph.rn`, stored per state as `on_order`),, as the Python
+  one was (alphabetical would put ABORT before CONTINUE in `recover`, and a chooser
+  that leans to the first option would abort). `selftest` checks it.
 - **200 steps** per run, a ceiling a plugin can lower and not raise. Every tool
   call, scorer call and mark is a step. `wiki-hop` costs about five steps a hop,
   so its 30-hop budget fits; the step cap is the real bound on a long run, and
@@ -207,23 +195,16 @@ running.
 - In Rune, a closure that calls a lib function must be reachable from every
   workflow or the unit does not link, and a closure that uses a captured value
   moves it out on first call. `lib/` therefore has no closures at all: the regex
-  engine is a flat program run with an explicit stack (its first draft was
-  continuation-passing and broke on exactly this).
+  engine is a flat program run with an explicit stack.
 - A String passed to a tool call is *moved out* of wherever it came from. A
   template that handed out the graph's own string (`{{event.option.tool}}`) let
   the first tool call empty that menu item, and the second visit to the state
-  failed with `Cannot read, value is M-...`. `render_value` now returns copies.
+  failed with `Cannot read, value is M-...`. `render_value` returns copies.
   Also: `x is ()` tests for a *tuple*, not null; use `is_null` or type tests.
 - Integers from `len()` are `u64` and `JSON` integers are `i64`; the interpreter
   normalises before comparing.
 
-## Status
-
-All four phases are built and checked; the README's Verify is what shows it. What
-was run for real, and what stood in, is listed in the final report of the port and
-in "What is mocked" below.
-
-### What is mocked
+## What is mocked
 
 | piece | in tests | real |
 |---|---|---|
@@ -233,17 +214,3 @@ in "What is mocked" below.
 | juice shop | a `python3 -m http.server` on :3001 with a `robots.txt` | the lab |
 | ssh | a shim `ssh` on PATH that logs its argv and runs the command locally | a guest |
 | commands, `grep`, `read`, `curl`, `wsl.exe` | **real** | |
-
-## Plan
-
-1. **Survey** (this file). Done.
-2. **Interpreter**: `lib/*.rn`, `tools/mark.rn`, `workflows/selftest.rn` (a pure
-   graph and fixed-input checks), then `find-related` end to end against real
-   `grep` and `read`. Done.
-3. **Remaining workflows**: one per graph; the command tools; `distro` and `ssh`
-   options; each graph run under mock to its first tool step or park. Done:
-   every graph ran to its final state, and the park, resume, EMPTY, ERROR/recover
-   and history paths were run too.
-4. **UI exposure and packaging**: `jev_graph`, the README (Prerequisites, Install,
-   Verify, Uninstall), `plugin.rn`, a row in the top-level README, and an install
-   from `file://` followed by Verify. Done.

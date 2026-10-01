@@ -1,17 +1,11 @@
-// jev/lib/guards.rn -- the guards the graphs use: equals, count, matches and
-// entails. `equals`, `count` and `matches` are decided here; `entails` asks the
-// NLI scorer through the plugin's own `jev_entail` tool, which is a journaled
-// step like any other, so a resumed run does not ask twice.
-//
-// A guard this file does not know is refused when the graph is loaded
-// (graph.rn's `check_guard`), never skipped.
+// `equals`, `count` and `matches` are decided here; `entails` asks `jev_entail`, a
+// journaled step, so a resumed run does not ask twice. A guard not handled here is
+// refused at load (graph.rn `check_guard`), never skipped.
 
 fn tool_refused(e) {
     e.contains("the user declined this tool call") || e.contains("denied by policy:") || e.contains("has no grant covering")
 }
 
-// Equality of two values the way the graphs mean it: strings by text (with
-// `fold`, case-folded and stripped), everything else by its JSON form.
 fn values_equal(a, b, fold) {
     if a is String && b is String {
         if fold {
@@ -22,9 +16,8 @@ fn values_equal(a, b, fold) {
     canon(a) == canon(b)
 }
 
-// Does an `entails` guard pass? Ok(true/false), or Err(#{k: "fatal", ...}) when
-// the gate refused the scorer. A scorer that cannot be reached is "does not
-// pass", with a warning: the same answer a neutral verdict gives.
+// Ok(bool), or Err(fatal) when the gate refused the scorer. An unreachable scorer
+// is "does not pass" with a warning, like a neutral verdict.
 async fn nli_passes(rt, guard, scope) {
     let params = oget_or(guard, "params", #{});
     let premise = render(oget_or(params, "premise", "{{context.obs.text}}"), scope, rt.warnings);
@@ -122,8 +115,6 @@ async fn eval_guard(rt, guard, scope) {
     Err(#{ k: "fatal", msg: "guard type " + kind + " is not supported" })
 }
 
-// The transitions of an `always`, an `on` entry or an `onDone`, in document
-// order: a string is a target, an object is a transition, a list is a list.
 fn as_transitions(v) {
     if is_null(v) {
         return [];
@@ -149,7 +140,7 @@ fn as_transitions(v) {
     none
 }
 
-// The index of the first transition whose guard passes (none is a pass), or -1.
+// Index of the first transition whose guard passes (no guard passes), or -1.
 async fn first_passing(rt, transitions, scope) {
     let i = 0;
     while i < transitions.len() {
