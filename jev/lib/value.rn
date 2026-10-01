@@ -1,0 +1,329 @@
+// jev/lib/value.rn -- values and `{{path}}` templates, the part of the graph
+// interpreter that has no effects.
+//
+// Every file in lib/ is compiled in front of a workflow as one unit, so a name
+// here is a name everywhere in lib/. Two things the design of these files is
+// built around, both learned from the Rune this runs on:
+//
+//   * An object's key order is not stable (it is a hash map), and a workflow is
+//     replayed from its journal on resume: anything that decides by key order
+//     must sort the keys first. `canon` and `sorted_keys` are the two doors.
+//   * A closure that calls a lib function must be reachable from every workflow,
+//     or linking the unit fails (unreachable functions are dropped, their
+//     closures' callees with them). So: no closures in lib/ except in regex.rn,
+//     which every workflow reaches through the interpreter.
+
+fn is_null(v) {
+    match v {
+        () => true,
+        _ => false,
+    }
+}
+
+fn join(parts, sep) {
+    let out = "";
+    let first = true;
+    for p in parts {
+        if first {
+            first = false;
+        } else {
+            out += sep;
+        }
+        out += p;
+    }
+    out
+}
+
+fn sorted_keys(o) {
+    let ks = [];
+    for (k, _) in o {
+        ks.push(k);
+    }
+    ks.sort();
+    ks
+}
+
+// JSON with sorted keys and Python's default separators (", " and ": "),
+// which is what the interpreter this replaces printed an object as.
+fn canon(v) {
+    match v {
+        () => "null",
+        _ => {
+            if v is String {
+                json::to_string(v).unwrap_or("\"\"")
+            } else if v is bool {
+                if v { "true" } else { "false" }
+            } else if v is i64 || v is u64 {
+                `${v}`
+            } else if v is f64 {
+                `${v}`
+            } else if v is Vec {
+                let parts = [];
+                for x in v {
+                    parts.push(canon(x));
+                }
+                "[" + join(parts, ", ") + "]"
+            } else if v is Object {
+                let parts = [];
+                for k in sorted_keys(v) {
+                    parts.push(json::to_string(k).unwrap_or("\"\"") + ": " + canon(v[k]));
+                }
+                "{" + join(parts, ", ") + "}"
+            } else {
+                "null"
+            }
+        }
+    }
+}
+
+// The text a value has when it is put in a template: a list is newline-joined,
+// an object is JSON, null is nothing.
+fn stringify(v) {
+    match v {
+        () => "",
+        _ => {
+            if v is String {
+                v
+            } else if v is Vec {
+                let parts = [];
+                for x in v {
+                    parts.push(stringify(x));
+                }
+                join(parts, "\n")
+            } else {
+                canon(v)
+            }
+        }
+    }
+}
+
+// A key of an object that may not be an object: Some(value) or None.
+fn oget(o, key) {
+    if o is Object {
+        o.get(key)
+    } else {
+        None
+    }
+}
+
+fn oget_or(o, key, dflt) {
+    match oget(o, key) {
+        Some(v) => v,
+        None => dflt,
+    }
+}
+
+// A dotted path into a scope: Some(value) (null is a value) or None for
+// missing. Lists are indexed by integer, negative from the end.
+fn resolve(path, scope) {
+    let cur = scope;
+    for seg in path.split(".") {
+        if cur is Object {
+            match cur.get(seg) {
+                Some(v) => { cur = v; }
+                None => return None,
+            }
+        } else if cur is Vec {
+            match seg.parse::<i64>() {
+                Ok(i) => {
+                    let n = cur.len();
+                    let j = if i < 0 { n + i } else { i };
+                    if j < 0 || j >= n {
+                        return None;
+                    }
+                    cur = cur[j];
+                }
+                Err(_) => return None,
+            }
+        } else {
+            return None;
+        }
+    }
+    Some(cur)
+}
+
+fn is_path_char(c, first) {
+    if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' {
+        true
+    } else if first {
+        false
+    } else {
+        (c >= '0' && c <= '9') || c == '.'
+    }
+}
+
+fn is_path(s) {
+    let first = true;
+    let any = false;
+    for c in s.chars() {
+        if !is_path_char(c, first) {
+            return false;
+        }
+        first = false;
+        any = true;
+    }
+    any
+}
+
+// `{{path}}` placeholders replaced by their text; a path that is not there is
+// nothing, with a warning; text that is not a placeholder is left alone.
+fn render(t, scope, warns) {
+    let out = "";
+    let first = true;
+    for part in t.split("{{") {
+        if first {
+            out += part;
+            first = false;
+            continue;
+        }
+        match part.split_once("}}") {
+            Some((inner, rest)) => {
+                let name = inner.trim();
+                if is_path(name) {
+                    match resolve(name, scope) {
+                        Some(v) => { out += stringify(v); }
+                        None => { warns.push("unresolved template path: " + name); }
+                    }
+                    out += rest;
+                } else {
+                    out += "{{" + part;
+                }
+            }
+            None => { out += "{{" + part; }
+        }
+    }
+    out
+}
+
+// Like render, but a template that is exactly one placeholder gives the value
+// itself (a list stays a list); a missing path is null, not "".
+fn render_value(t, scope, warns) {
+    let tr = t.trim();
+    if tr.starts_with("{{") && tr.ends_with("}}") && tr.len() >= 4 {
+        let inner = tr.get(2..tr.len() - 2).unwrap_or("");
+        if !inner.contains("{{") && !inner.contains("}}") {
+            let name = inner.trim();
+            if is_path(name) {
+                let found = match resolve(name, scope) {
+                    Some(v) => v,
+                    None => {
+                        warns.push("unresolved template path: " + name);
+                        ()
+                    }
+                };
+                return found;
+            }
+        }
+    }
+    render(t, scope, warns)
+}
+
+// Every string leaf of a JSON-shaped value through render_value.
+fn render_deep(v, scope, warns) {
+    if v is String {
+        render_value(v, scope, warns)
+    } else if v is Object {
+        let out = #{};
+        for (k, x) in v {
+            out[k] = render_deep(x, scope, warns);
+        }
+        out
+    } else if v is Vec {
+        let out = [];
+        for x in v {
+            out.push(render_deep(x, scope, warns));
+        }
+        out
+    } else {
+        v
+    }
+}
+
+// A deep copy, through JSON.
+fn copy_json(v) {
+    match json::from_string(json::to_string(v).unwrap_or("null")) {
+        Ok(c) => c,
+        Err(_) => v,
+    }
+}
+
+fn path_dot(path) {
+    join(path, ".")
+}
+
+fn path_push(path, seg) {
+    let out = [];
+    for p in path {
+        out.push(p);
+    }
+    out.push(seg);
+    out
+}
+
+// The first n segments.
+fn path_take(path, n) {
+    let out = [];
+    let i = 0;
+    while i < n && i < path.len() {
+        out.push(path[i]);
+        i += 1;
+    }
+    out
+}
+
+fn path_eq(a, b) {
+    if a.len() != b.len() {
+        return false;
+    }
+    let i = 0;
+    while i < a.len() {
+        if a[i] != b[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}
+
+fn common_prefix_len(a, b) {
+    let i = 0;
+    while i < a.len() && i < b.len() && a[i] == b[i] {
+        i += 1;
+    }
+    i
+}
+
+// The first `n` characters of a string, or its last `n`.
+fn chars_head(s, n) {
+    if s.len() <= n {
+        return s;
+    }
+    let cs = s.chars().collect::<Vec>();
+    if cs.len() <= n {
+        return s;
+    }
+    let out = "";
+    let i = 0;
+    while i < n {
+        out += `${cs[i]}`;
+        i += 1;
+    }
+    out
+}
+
+fn chars_tail(s, n) {
+    if s.len() <= n {
+        return s;
+    }
+    let cs = s.chars().collect::<Vec>();
+    if cs.len() <= n {
+        return s;
+    }
+    let out = "";
+    let i = cs.len() - n;
+    while i < cs.len() {
+        out += `${cs[i]}`;
+        i += 1;
+    }
+    out
+}

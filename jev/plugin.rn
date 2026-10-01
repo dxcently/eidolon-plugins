@@ -1,0 +1,14 @@
+// The plugin manifest for `jev` -- the directory's name is the namespace every
+// verb it ships is registered under (`jev_choose`, ...), so this file says only
+// what the plugin says about itself.
+pub fn manifest() {
+    #{
+        name: "jev",
+        version: "0.1.0",
+        description: "jev automation graphs as eidolon workflows: a state-machine interpreter, graphs pinned by hash, and tools for the recon commands, the chooser and the NLI scorer",
+        claims: #{
+            tools: ["graph", "mark"],
+            workflows: ["find-related", "selftest"],
+        },
+    }
+}

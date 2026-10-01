@@ -1,0 +1,33 @@
+// `jev_mark`: says where a jev graph run is, and does nothing else.
+//
+// The interpreter (lib/interp.rn) calls this as a workflow step each time the
+// run enters a state, parks, or ends. The step's *input* is the record -- {graph,
+// kind, state, step, actions, outcome?} -- and a run's journal keeps every step's
+// input, so whatever draws the graph reads the active node as the last
+// `jev_mark` step of the run (`eidolon log --json <session>`; the step's tool is
+// `jev_mark`, its input is the record). The tool itself changes nothing and
+// reads nothing: it exists so the position is a journaled, replayable step
+// like every other, rather than a side channel.
+pub fn manifest() {
+    #{
+        name: "jev_mark",
+        description: "Record where a jev graph run is: the graph, what happened (enter, park, final, end), the dotted state path, and the step and action counts. A graph workflow calls this itself; it has no effect beyond appearing in the run's journal, where a viewer reads the active node. Calling it by hand does not move any run.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "graph": #{ "type": "string", "description": "The graph's id, e.g. triage-linux." },
+                "kind": #{ "type": "string", "enum": ["enter", "park", "final", "end"], "description": "enter: a leaf state was entered; park: the run is waiting on a person in this state; final: a final state was entered; end: the run ended without one (outcome says how)." },
+                "state": #{ "type": "string", "description": "The state's dotted path, e.g. investigate.identify." },
+                "step": #{ "type": "integer", "description": "Decisions taken so far." },
+                "actions": #{ "type": "integer", "description": "Tool actions taken so far." },
+                "outcome": #{ "type": "string", "description": "With kind end: exhausted, stopped or error." },
+            },
+            "required": ["graph", "kind", "state"],
+        },
+    }
+}
+
+pub async fn call(input) {
+    Ok("marked " + `${input.graph}` + " " + `${input.kind}` + " " + `${input.state}`)
+}

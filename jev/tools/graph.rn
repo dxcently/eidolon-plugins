@@ -1,0 +1,59 @@
+// `jev_graph`: a graph of this plugin, as text.
+//
+// The graphs are files in this plugin's `graphs/`, and a workflow cannot read a
+// file, so it asks for one here. `raw: true` returns the file exactly as it is on
+// disk: the workflow hashes that text and refuses to run a graph whose hash it
+// does not pin (see lib/interp.rn, `run_pinned`).
+//
+// Where the plugin is: ${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}.
+// A copy under test sets EIDOLON_JEV_DIR. The graph id is checked to be letters,
+// digits and '-' before it reaches the command line.
+
+pub fn manifest() {
+    #{
+        name: "jev_graph",
+        description: "A jev graph of this plugin. With raw: true, the graph file's text exactly as stored (a graph workflow reads and hash-checks it this way). Otherwise the graph's drawing: its states, the transitions between them, and what each state's menu is made from, as JSON.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "graph": #{ "type": "string", "description": "The graph's id: wiki-hop, find-related, ctf-juice-recon, triage-linux, triage-wsl or triage-botforge." },
+                "raw": #{ "type": "boolean", "description": "Return the file's text unchanged instead of the drawing." },
+            },
+            "required": ["graph"],
+        },
+    }
+}
+
+fn graph_id(input) {
+    let id = match input.get("graph") {
+        Some(g) => `${g}`,
+        None => return Err("graph is required: the id of a graph in this plugin's graphs/"),
+    };
+    if id.len() == 0 || id.len() > 64 {
+        return Err("a graph id is 1 to 64 characters");
+    }
+    for c in id.chars() {
+        if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+            return Err(`not a graph id: ${id} (lowercase letters, digits and '-')`);
+        }
+    }
+    Ok(id)
+}
+
+pub async fn call(input) {
+    let id = graph_id(input)?;
+    let raw = match input.get("raw") {
+        Some(r) => r == true,
+        None => false,
+    };
+    let script = "cat \"${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}/graphs/" + id + ".json\"";
+    let text = eidolon::shell(script, Some(10)).await?;
+    if text.starts_with("[exit code") || text.starts_with("[timed out") || text.contains("--- stderr ---") {
+        return Err(`no graph named ${id} in this plugin's graphs/: ${text}`);
+    }
+    if raw {
+        return Ok(text);
+    }
+    Err("the drawing form is not built yet; ask for raw: true")
+}
