@@ -7,7 +7,7 @@
 // (graph.rn's `check_guard`), never skipped.
 
 fn tool_refused(e) {
-    e.contains("the user declined this tool call") || e.contains("denied by policy:")
+    e.contains("the user declined this tool call") || e.contains("denied by policy:") || e.contains("has no grant covering")
 }
 
 // Equality of two values the way the graphs mean it: strings by text (with

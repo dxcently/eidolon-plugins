@@ -1,3 +1,5 @@
 *.json text eol=lf
 *.rn text eol=lf
 *.sh text eol=lf
+*.py text eol=lf
+test/fake-browser/site/*.txt text eol=lf

@@ -1,0 +1,40 @@
+// jev/workflows/wiki-hop.rn -- run the `wiki-hop` graph (graphs/wiki-hop.json).
+//
+//   eidolon workflow run <plugin dir> wiki-hop --args '{"start":"Cat","goal":"Egypt"}'
+//
+// Opens the start article and follows article links toward the goal, one link at a
+// time, until the page's title or heading is the goal (exact, or an entailment of
+// "this is the article about <goal>"). Each hop: snapshot the page, ask the chooser
+// to score the links, click the best; a link the chooser is unsure about parks the
+// run on a person (`eidolon workflow resume ... --answer <n>`).
+//
+// It drives the browser plugin (`browser_open`, `browser_snapshot`, `browser_click`,
+// `browser_back`), confined to https://en.wikipedia.org, and needs the jev service
+// for `jev_choose` and `jev_entail` (README, Prerequisites). A hop costs about five
+// steps of the host's 200-step cap, so a run is bounded at roughly thirty hops.
+//
+// The graph is read through `jev_graph` and hash-checked against PIN before it
+// runs; change the graph and the pin together (jev/test/pin.sh).
+
+const GRAPH = "wiki-hop";
+const PIN = "sha256:2db16e39c7016e410bd4f8c96f75255944387762ff4be080af821d94e2124bab";
+
+pub fn workflow() {
+    #{
+        name: "wiki-hop",
+        description: "Reach a target Wikipedia article from a start article by following links in the browser plugin, a chooser scoring the links on each page. Parks on a person when the chooser is unsure. Needs the browser plugin and the jev service.",
+        approval: "mutating",
+        params: #{
+            "type": "object",
+            "properties": #{
+                "start": #{ "type": "string", "description": "The article to start from, as it appears in the URL after /wiki/ (Cat, Ancient_Egypt)." },
+                "goal": #{ "type": "string", "description": "The title of the article to reach." },
+            },
+            "required": ["start", "goal"],
+        },
+    }
+}
+
+pub async fn run(args) {
+    run_pinned(GRAPH, PIN, args).await
+}

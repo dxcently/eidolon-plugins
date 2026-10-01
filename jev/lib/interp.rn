@@ -204,7 +204,7 @@ async fn run_tool_action(rt, params) {
     if !(name is String) || !tool_allowed(rt, name) {
         return e_fatal("the graph calls '" + stringify(name) + "', which its meta.jev.tools does not declare");
     }
-    let input = render_deep(oget_or(params, "input", #{}), scope_of(rt), rt.warnings);
+    let input = render_input(oget_or(params, "input", #{}), scope_of(rt), rt.warnings);
     let into = oget_or(params, "into", "obs");
     let result = eidolon::tool_call(name, input).await;
     rt.counts.actions += 1;
@@ -257,7 +257,7 @@ fn resolve_history_chain(rt, path) {
     let parent = path_take(path, path.len() - 1);
     let resolved = [];
     match oget(rt.history, path_dot(parent)) {
-        Some(child) => { resolved = path_push(parent, child); }
+        Some(child) => { resolved = path_push(parent, child.clone()); }
         None => {
             match resolve_target(rt.g, path, st.target) {
                 Some(p) => { resolved = p; }
@@ -275,7 +275,7 @@ async fn exit_to(rt, keep_len) {
         run_actions(rt, oget_or(st, "exit", [])).await?;
         let parent = path_take(leaving, leaving.len() - 1);
         if parent.len() >= keep_len {
-            rt.history[path_dot(parent)] = leaving[leaving.len() - 1];
+            rt.history[path_dot(parent)] = leaving[leaving.len() - 1].clone();
         }
         rt.active = parent;
     }
@@ -442,14 +442,14 @@ async fn park_pick(rt, why, ask, labels, probs) {
     } else {
         base += "Nothing here can be picked: answer `stop` (or `stop: <reason>`) to end the run.";
     }
-    let question = base;
+    let question = base.clone();
     loop {
         if rt.counts.escalations + 1 > graph_budget(rt.g, "escalations", 10) {
             return Err(#{ k: "budget", name: "escalations" });
         }
         rt.counts.escalations += 1;
         mark(rt, "park", path_dot(rt.active), #{}).await?;
-        let answer = match eidolon::park(question).await {
+        let answer = match eidolon::park(question.clone()).await {
             Ok(a) => a.trim(),
             Err(e) => return e_fatal("park: " + e),
         };
@@ -788,11 +788,50 @@ async fn run_graph(text, input) {
     report
 }
 
+// The graph's file, joined from the pages `jev_graph` hands out (a tool answer
+// over the harness's size limit is spilled to a file, so a graph of any size comes
+// in pages of about 5000 characters; see tools/graph.rn). Ok(text) or Err(reason).
+async fn read_graph(name) {
+    let text = "";
+    let from = 1;
+    let pages = 0;
+    while from > 0 {
+        pages += 1;
+        if pages > 40 {
+            return Err("the graph is more than 40 pages");
+        }
+        let page = eidolon::tool_call("jev_graph", #{ graph: name, from: from }).await?;
+        let head = page.clone();
+        let body = "";
+        match page.split_once("
+") {
+            Some(pair) => {
+                head = pair.0;
+                body = pair.1;
+            }
+            None => {}
+        }
+        if !head.starts_with("jev-page next=") {
+            return Err("a page of the graph had no jev-page header");
+        }
+        let next = match head.get(14..head.len()).unwrap_or("").trim().parse::<i64>() {
+            Ok(n) => n,
+            Err(_) => return Err("a page of the graph had a bad jev-page header: " + head),
+        };
+        text += body;
+        if next != 0 && next <= from {
+            return Err("the graph's pages do not advance");
+        }
+        from = next;
+    }
+    Ok(text)
+}
+
 // What every graph's workflow runs: fetch the graph's text through the
 // plugin's own `jev_graph` tool, refuse it unless it is the text this workflow
 // pins by hash, run it.
 async fn run_pinned(name, pin, input) {
-    let text = match eidolon::tool_call("jev_graph", #{ graph: name, raw: true }).await {
+    let text = match read_graph(name).await {
         Ok(t) => t,
         Err(e) => return fatal("jev " + name + ": could not read the graph: " + e),
     };

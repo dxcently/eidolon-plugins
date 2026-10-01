@@ -1,14 +1,31 @@
 // The plugin manifest for `jev` -- the directory's name is the namespace every
 // verb it ships is registered under (`jev_choose`, ...), so this file says only
 // what the plugin says about itself.
+//
+// There is no `service:` block on purpose. The service behind `jev_choose` and
+// `jev_entail` is Python and torch (jev/server.py in the Minerva repo, ~9 GB of
+// weights for the NLI model); a plugin cannot ship that, and declaring a command
+// it cannot supply would only make `eidolon plugins service approve` approve a
+// command that does not run. The README says how to start it; every graph that
+// needs it parks on a person, or (for an entails guard) does not pass, when it is
+// not there. `find-related`, `ctf-juice-recon` and `selftest` need no service.
 pub fn manifest() {
     #{
         name: "jev",
-        version: "0.1.0",
+        version: "0.2.0",
         description: "jev automation graphs as eidolon workflows: a state-machine interpreter, graphs pinned by hash, and tools for the recon commands, the chooser and the NLI scorer",
         claims: #{
-            tools: ["graph", "mark"],
-            workflows: ["find-related", "selftest"],
+            tools: [
+                "graph", "mark", "choose", "entail",
+                "os_release", "uname", "hostname_uptime", "who",
+                "listening", "established", "addresses", "firewall", "processes",
+                "juice_headers", "juice_robots",
+            ],
+            grants: ["file:~/.config/eidolon/jev.token"],
+            workflows: [
+                "selftest", "find-related", "wiki-hop", "ctf-juice-recon",
+                "triage-linux", "triage-wsl", "triage-botforge",
+            ],
         },
     }
 }

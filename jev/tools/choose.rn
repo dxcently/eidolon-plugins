@@ -1,0 +1,69 @@
+// `jev_choose`: the jev service's `choose` (jev/server.py in the Minerva repo).
+//
+// jevlike scores a fixed list of options against a context in one forward pass and
+// answers `{"probs": {option: p}, "best": option}`. The graph interpreter calls this
+// for every choice it makes, and any run may call it directly. The service is not
+// part of this plugin (it is Python and torch); see the README, Prerequisites.
+pub fn manifest() {
+    #{
+        name: "jev_choose",
+        description: "Score a fixed list of options against a context in one forward pass -- no reasoning tokens, effectively instant. Reach for this when the decision is really a pick among a small set you have already enumerated: which menu item to click, which queue a ticket belongs in, which candidate to follow, which branch to take next. You get a probability per option back as JSON {probs: {option: p}, best: option}, so it also works as a confidence check on a choice you already lean toward. Not for open-ended judgment, ranking free text you have not reduced to a short option list, or picking the options themselves. Options must be distinct. Needs the jev service.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "context": #{
+                    "type": "string",
+                    "description": "The situation or question the options answer, in plain text.",
+                },
+                "options": #{
+                    "type": "array",
+                    "items": #{ "type": "string" },
+                    "minItems": 2,
+                    "description": "At least two distinct options to score, e.g. [\"refund\", \"sales\", \"technical support\"].",
+                },
+            },
+            "required": ["context", "options"],
+        },
+    }
+}
+
+pub async fn call(input) {
+    let context = match input.get("context") {
+        Some(c) => c,
+        None => return Err("context is required"),
+    };
+    let options = match input.get("options") {
+        Some(o) => o,
+        None => return Err("options is required"),
+    };
+    let out = call_service("choose", #{ "context": context, "options": options }).await?;
+    Ok(json::to_string(out)?)
+}
+
+// Everything below is the same in jev_choose.rn and jev_entail.rn: upstream
+// eidolon compiles each tool file on its own, and a tool file is meant to be
+// handed over whole.
+
+// The jev service (jev/server.py in the Minerva repo). Change the port here and in
+// the service's EIDOLON_SERVICE_PORT together; 8090 is the browser plugin's.
+fn service() {
+    #{
+        name: "jev",
+        base_url: "http://127.0.0.1:8091",
+        token_file: "~/.config/eidolon/jev.token",
+        auth: #{ header: "Authorization", prefix: "Bearer " },
+        timeout_s: 120,
+    }
+}
+
+// POST {method, args} to /call; the answer is {ok, result} or {ok: false, error}.
+async fn call_service(method, args) {
+    let body = json::to_string(#{ "method": method, "args": args })?;
+    let reply = json::from_string(eidolon::api_request(service(), "POST", "/call", Some(body)).await?)?;
+    if reply.status != 200 {
+        return Err(`jev service answered ${reply.status}: ${reply.body}`);
+    }
+    let out = json::from_string(reply.body)?;
+    if out.ok { Ok(out.result) } else { Err(out.error) }
+}

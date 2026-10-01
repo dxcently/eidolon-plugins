@@ -1,0 +1,11 @@
+// A stand-in for the `browser` plugin, for running wiki-hop where there is no
+// Chromium: four tools named like the real ones, answering from fb.sh's four fake
+// pages. A test aid, not shipped (it lives under jev/test/).
+pub fn manifest() {
+    #{
+        name: "browser",
+        version: "0.0.0",
+        description: "a four-page fake of en.wikipedia.org behind browser_open/snapshot/click/back, for testing jev's wiki-hop",
+        claims: #{ tools: ["open", "snapshot", "click", "back"] },
+    }
+}

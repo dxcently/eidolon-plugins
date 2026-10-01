@@ -196,7 +196,9 @@ fn render(t, scope, warns) {
 }
 
 // Like render, but a template that is exactly one placeholder gives the value
-// itself (a list stays a list); a missing path is null, not "".
+// itself (a list stays a list, as a copy: what a template hands out is never the
+// graph's or the context's own value, which a tool call would otherwise move
+// out of it); a missing path is null, not "".
 fn render_value(t, scope, warns) {
     let tr = t.trim();
     if tr.starts_with("{{") && tr.ends_with("}}") && tr.len() >= 4 {
@@ -211,7 +213,7 @@ fn render_value(t, scope, warns) {
                         ()
                     }
                 };
-                return found;
+                return copy_json(found);
             }
         }
     }
@@ -324,6 +326,56 @@ fn chars_tail(s, n) {
     while i < cs.len() {
         out += `${cs[i]}`;
         i += 1;
+    }
+    out
+}
+
+// The run's arguments with `defaults` filled in for any key that is absent, null
+// or an empty string. Arguments that are not an object count as none.
+fn with_defaults(args, defaults) {
+    let out = #{};
+    if args is Object {
+        for (k, v) in args {
+            out[k] = v;
+        }
+    }
+    for (k, v) in defaults {
+        let have = match out.get(k) {
+            Some(x) => !(is_null(x) || (x is String && x.trim() == "")),
+            None => false,
+        };
+        if !have {
+            out[k] = v;
+        }
+    }
+    out
+}
+
+// A tool action's `input`: render_deep, except that a top-level key whose value is
+// exactly one `{{input.<name>}}` placeholder is left out when the run was not given
+// that argument (absent, null or ""). That is how a graph passes an optional run
+// argument on: the tool sees the key only when there is something in it, instead
+// of a null its schema would refuse.
+fn render_input(v, scope, warns) {
+    if !(v is Object) {
+        return render_deep(v, scope, warns);
+    }
+    let out = #{};
+    for (k, x) in v {
+        if x is String {
+            let tr = x.trim();
+            if tr.starts_with("{{input.") && tr.ends_with("}}") && tr.len() > 10 {
+                let name = tr.get(2..tr.len() - 2).unwrap_or("").trim();
+                let unset = match resolve(name, scope) {
+                    Some(have) => is_null(have) || (have is String && have.trim() == ""),
+                    None => true,
+                };
+                if unset {
+                    continue;
+                }
+            }
+        }
+        out[k] = render_deep(x, scope, warns);
     }
     out
 }

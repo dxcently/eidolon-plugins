@@ -1,24 +1,37 @@
 // `jev_graph`: a graph of this plugin, as text.
 //
 // The graphs are files in this plugin's `graphs/`, and a workflow cannot read a
-// file, so it asks for one here. `raw: true` returns the file exactly as it is on
-// disk: the workflow hashes that text and refuses to run a graph whose hash it
-// does not pin (see lib/interp.rn, `run_pinned`).
+// file, so it asks for one here. Two forms:
+//
+//   raw: true       the file's text exactly as it is on disk (small graphs only:
+//                   the harness spills a tool answer over about 8 KB to a file and
+//                   hands back a preview, so a bigger graph comes in pages)
+//   from: N         one page of the file, from line N (1-based): a first line
+//                   `jev-page next=M` (M the line the next page starts at, 0 when
+//                   this was the last), then the lines themselves, each ending in a
+//                   newline. A page is at most about 5000 characters. The pages
+//                   joined are the file. This is how lib/interp.rn's `run_pinned`
+//                   reads a graph: it hashes the joined text and refuses to run a
+//                   graph whose hash it does not pin.
+//
+// Neither form returns the drawing of the graph (states and transitions for a
+// viewer); that is the default, below.
 //
 // Where the plugin is: ${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}.
 // A copy under test sets EIDOLON_JEV_DIR. The graph id is checked to be letters,
-// digits and '-' before it reaches the command line.
+// digits and '-' before it reaches the command line, and `from` to be a number.
 
 pub fn manifest() {
     #{
         name: "jev_graph",
-        description: "A jev graph of this plugin. With raw: true, the graph file's text exactly as stored (a graph workflow reads and hash-checks it this way). Otherwise the graph's drawing: its states, the transitions between them, and what each state's menu is made from, as JSON.",
+        description: "A jev graph of this plugin. With raw: true, the graph file's text exactly as stored; with from: N, one page of that text from line N (a first line `jev-page next=M`, then the lines) -- a graph workflow reads and hash-checks it this way. Otherwise the graph's drawing: its states, the transitions between them, and what each state's menu is made from, as JSON.",
         approval: "read_only",
         input_schema: #{
             "type": "object",
             "properties": #{
                 "graph": #{ "type": "string", "description": "The graph's id: wiki-hop, find-related, ctf-juice-recon, triage-linux, triage-wsl or triage-botforge." },
                 "raw": #{ "type": "boolean", "description": "Return the file's text unchanged instead of the drawing." },
+                "from": #{ "type": "integer", "description": "Return one page of the file's text, starting at this line (1-based). The first line of the answer is `jev-page next=M`." },
             },
             "required": ["graph"],
         },
@@ -41,15 +54,39 @@ fn graph_id(input) {
     Ok(id)
 }
 
+fn failed(text) {
+    text.starts_with("[exit code") || text.starts_with("[timed out") || text.contains("--- stderr ---")
+}
+
 pub async fn call(input) {
     let id = graph_id(input)?;
+    let path = "\"${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}/graphs/" + id + ".json\"";
+    match input.get("from") {
+        Some(f) => {
+            if f is i64 || f is String {
+                let n = match `${f}`.parse::<i64>() {
+                    Ok(n) => n,
+                    Err(_) => return Err(`from is a line number, not ${f}`),
+                };
+                if n < 1 || n > 100000 {
+                    return Err(`from is a line number from 1, not ${n}`);
+                }
+                let script = "awk -v s=" + `${n}` + " 'NR<s{next} NR>s && n+length($0)+1>5000{nxt=NR; exit} {n+=length($0)+1; a[++k]=$0} END{print \"jev-page next=\" nxt+0; for(i=1;i<=k;i++) print a[i]}' " + path;
+                let text = eidolon::shell(script, Some(10)).await?;
+                if failed(text) || !text.starts_with("jev-page next=") {
+                    return Err(`no graph named ${id} in this plugin's graphs/: ${text}`);
+                }
+                return Ok(text);
+            }
+        }
+        None => {}
+    }
     let raw = match input.get("raw") {
         Some(r) => r == true,
         None => false,
     };
-    let script = "cat \"${EIDOLON_JEV_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/jev}/graphs/" + id + ".json\"";
-    let text = eidolon::shell(script, Some(10)).await?;
-    if text.starts_with("[exit code") || text.starts_with("[timed out") || text.contains("--- stderr ---") {
+    let text = eidolon::shell("cat " + path, Some(10)).await?;
+    if failed(text) {
         return Err(`no graph named ${id} in this plugin's graphs/: ${text}`);
     }
     if raw {
