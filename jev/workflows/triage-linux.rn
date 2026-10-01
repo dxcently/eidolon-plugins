@@ -14,7 +14,7 @@
 // distribution, `ssh` (and `ssh_port`) for another host.
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "triage-linux";
 const PIN = "sha256:388fbebbc8abebfd1a70527d77ecb011bc30ca01de95788b9092801b22d9324e";

@@ -18,7 +18,7 @@ graphs' *judgement* is nothing: the numbers below are rules, not a model.
   entail   entailment 0.9 when most of the hypothesis's longer words appear in the
            premise, else neutral 0.8. MODE=none errors here too.
 
-    python3 test/stub_service.py --port 8091 --token-file /tmp/jev.token [--mode first]
+    python3 tests/jev/stub_service.py --port 8091 --token-file /tmp/jev.token [--mode first]
 """
 import argparse
 import json

@@ -1,0 +1,15 @@
+// A stand-in for the `browser` plugin, for running wiki-hop where there is no
+// Chromium: four tools named like the real ones, answering from fb.sh's four fake
+// pages. It is named `browser` on purpose (eidolon registers `<plugin>_<verb>`,
+// and wiki-hop calls `browser_open`), which is why it must never be installed
+// into a real config: it lives only under tests/jev/, is not a top-level folder
+// of the repo (so `plugins install --all` does not see it), and every script
+// that installs it (guard.sh) refuses unless XDG_CONFIG_HOME is a temp dir.
+pub fn manifest() {
+    #{
+        name: "browser",
+        version: "0.0.0",
+        description: "TEST DOUBLE for jev's tests, never install into a real config. A four-page fake of en.wikipedia.org behind browser_open/snapshot/click/back, for testing jev's wiki-hop.",
+        claims: #{ tools: ["open", "snapshot", "click", "back"] },
+    }
+}

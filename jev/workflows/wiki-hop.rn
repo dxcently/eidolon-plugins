@@ -14,7 +14,7 @@
 // steps of the host's 200-step cap, so a run is bounded at roughly thirty hops.
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "wiki-hop";
 const PIN = "sha256:2db16e39c7016e410bd4f8c96f75255944387762ff4be080af821d94e2124bab";

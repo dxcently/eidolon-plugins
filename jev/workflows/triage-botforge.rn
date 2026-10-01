@@ -11,7 +11,7 @@
 // the jev service for `jev_choose` (README, Prerequisites), not `jev_entail`.
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "triage-botforge";
 const PIN = "sha256:03d2e05600b06d35b90d9d658e3a5b73c2c006108baf15cfa977770885264c2f";

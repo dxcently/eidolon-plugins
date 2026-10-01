@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# pin.sh [--check]: write each graph's sha256 into the workflow that runs it.
+# pin.sh [--check] [JEV_DIR]: write each graph's sha256 into the workflow that runs it.
 #
 # A workflow pins the graph it was reviewed with: `graphs/<id>.json` must hash to
 # the `const PIN` in `workflows/<id>.rn`, or the run refuses. After editing a
 # graph, run this (with no argument) and commit both files. With --check it
-# changes nothing and exits 1 if any pin is stale.
+# changes nothing and exits 1 if any pin is stale. JEV_DIR is the plugin
+# directory to work on: this checkout's `jev/` by default, or an installed copy
+# (`~/.config/eidolon/plugins/jev`) to check what is installed.
 set -euo pipefail
-here=$(cd "$(dirname "$0")/.." && pwd)
 check=0
-[ "${1:-}" = "--check" ] && check=1
+if [ "${1:-}" = "--check" ]; then check=1; shift; fi
+here=$(cd "${1:-$(dirname "$0")/../../jev}" && pwd)
 stale=0
 for g in "$here"/graphs/*.json; do
   id=$(basename "$g" .json)

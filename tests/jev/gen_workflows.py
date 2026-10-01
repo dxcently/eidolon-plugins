@@ -4,22 +4,22 @@
 Every graph has one workflow in workflows/<id>.rn, and they differ only in the
 graph id, the doc comment, the declared params, the approval and the defaults.
 The interpreter is lib/interp.rn; a workflow is the front door and the pin.
-The pin line is left alone if the file exists (test/pin.sh owns it).
+The pin line is left alone if the file exists (tests/jev/pin.sh owns it).
 
-    python3 test/gen_workflows.py          write the files
-    python3 test/gen_workflows.py --check  exit 1 if one differs (ignoring the pin)
+    python3 tests/jev/gen_workflows.py          write the files
+    python3 tests/jev/gen_workflows.py --check  exit 1 if one differs (ignoring the pin)
 """
 import os
 import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-WF = os.path.join(HERE, "..", "workflows")
+WF = os.path.join(HERE, "..", "..", "jev", "workflows")
 ZERO = "sha256:" + "0" * 64
 
 TAIL = """//
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "%(id)s";
 const PIN = "%(pin)s";

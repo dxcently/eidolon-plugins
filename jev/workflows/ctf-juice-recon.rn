@@ -11,7 +11,7 @@
 // argument.
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "ctf-juice-recon";
 const PIN = "sha256:8b4d598619ea52087b662bd5314688388a85184334b37fa16aac3a6a2ce20e9e";

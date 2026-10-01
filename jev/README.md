@@ -13,7 +13,7 @@ workflow that runs it; a person is asked only when the chooser is not sure.
 | `triage-linux` | what a Linux box is, what it exposes, what runs on it, what looks out of place: nine fixed read-only commands, a chooser picking the next | the jev service |
 | `triage-wsl` | `triage-linux` inside a WSL distribution (Ubuntu by default) | `wsl.exe`, the jev service |
 | `triage-botforge` | `triage-linux` for unattended use over ssh (no NLI, no confidence floor) | `ssh`, the jev service (`jev_choose` only) |
-| `wiki-hop` | follows links from one Wikipedia article to another | the `browser` plugin, the jev service |
+| `wiki-hop` | follows links from one Wikipedia article to another | the real [`browser`](../browser/) plugin, installed with its service running; the jev service |
 
 ```
 eidolon workflow run <jev dir> <graph> --args '{...}'
@@ -51,9 +51,20 @@ is an error, which a graph routes to its `ERROR` event.
 
 - Linux or WSL, and eidolon with the plugin runtime **and workflows** (upstream
   `master`; `eidolon workflow run` must exist).
-- `bash`, `awk`, `sed`, `sha256sum` (the plugin's shell tools and `test/pin.sh`).
-- Per graph, as in the table: `curl`, `ssh`, `wsl.exe` (a Windows host), the
-  [`browser`](../browser/) plugin.
+- `bash`, `awk`, `sed` and `sha256sum` (the plugin's shell tools). `python3`, `git`
+  and a checkout of this repository only for Verify's stand-ins: the plugin
+  ships none of its test scaffolding, which lives in `tests/jev/` of the repo.
+- Per graph, as in the table: `curl`, `ssh`, `wsl.exe` (a Windows host).
+- **`wiki-hop` alone needs the real [`browser`](../browser/) plugin from this
+  repo**, installed and trusted, with its service running (port 8090, token
+  `~/.config/eidolon/browser.token`; see its README). No other graph touches
+  it. The two plugins stay apart: jev's service is on 8091 with `jev.token`,
+  jev registers no `browser_*` tool of its own (`tests/jev/no-browser-names.sh`
+  checks it), and `jev_*` never reads `browser.token`. The repo's `tests/jev/`
+  has a *fake* plugin also named `browser` (the name has to match, since
+  `wiki-hop` calls `browser_open`); it is a test double, is not a top-level folder
+  of the repo so `plugins install --all` never picks it up, and its scripts
+  refuse to install it anywhere but a temp config.
 - **The jev service**, for `triage-*` and `wiki-hop` (not for `find-related`,
   `ctf-juice-recon` or `selftest`). It is not part of this plugin: it is Python
   and torch (`jevlike`, a 169 KB chooser, and `openjev`, a Qwen3.5-4B NLI model of
@@ -112,6 +123,11 @@ needs a model key; no step spends anything.
 
 ```bash
 P=~/.config/eidolon/plugins/jev
+R=<your checkout of dxcently/eidolon-plugins>   # the test scaffolding is here, not in $P
+
+# 0. the install carries no test scaffolding: none of these exist under $P
+find $P \( -name 'test*' -o -name '*.py' -o -path "$P/*/plugin.rn" \) | wc -l
+# 0
 
 # 1. every verb is there and vouched: 15 tools, 7 workflows
 eidolon plugins | grep -A30 '^jev ' | grep -c ' vouched by '
@@ -119,13 +135,14 @@ eidolon plugins | grep -A30 '^jev ' | grep -c ' vouched by '
 eidolon plugins | grep 'claims   workflows'
 # claims   workflows: selftest, find-related, wiki-hop, ctf-juice-recon, triage-linux, triage-wsl, triage-botforge
 
-# 2. the interpreter against itself: 43 fixed checks, no network, no model. It also
-#    reads all six graphs back through jev_graph and checks that each loads.
+# 2. the interpreter against itself: 45 fixed checks, no network, no model. It also
+#    reads all six graphs back through jev_graph and checks that each loads, and
+#    that a `transitions` menu comes out in the graph's own order.
 eidolon workflow run $P selftest --provider mock | grep -o 'selftest: [0-9]* checks hold'
-# selftest: 43 checks hold
+# selftest: 45 checks hold
 
 # 3. each graph is what its workflow pins
-bash $P/test/pin.sh --check
+bash $R/tests/jev/pin.sh --check $P
 # ok     ctf-juice-recon sha256:...   (six lines)
 
 # 4. find-related, end to end, on a one-file tree it can search
@@ -133,6 +150,27 @@ mkdir -p /tmp/jev-verify/docs && printf 'the jevprobe term\n' > /tmp/jev-verify/
 eidolon workflow run $P find-related --args '{"term":"jevprobe"}' --cwd /tmp/jev-verify --provider mock \
   | grep -o 'first_file[^,]*'
 # first_file\": \"docs/note.md\"
+
+# 5. jev stays out of the browser plugin's names: no `browser_` verb under jev's
+#    entry in the listing, and none in jev/tools/ of the checkout
+eidolon plugins | awk '/^jev /{f=1;next} /^[a-z]/{f=0} f' | grep -c 'browser_' || true
+# 0
+bash $R/tests/jev/no-browser-names.sh
+# ok     static: jev/tools declares no browser_* name (15 tools)
+
+# 6. the repo's listing does not offer the fake browser: this prints browser,
+#    jev, subagent and nothing called "TEST DOUBLE"
+eidolon plugins --dir $R 2>&1 | grep -E '^(browser|jev|subagent) '
+eidolon plugins --dir $R 2>&1 | grep -c 'TEST DOUBLE' || true
+# browser 0.1.0
+# jev 0.2.0
+# subagent 0.2.1
+# 0
+
+# 7. the fake's own scripts refuse a real config. This one installs nothing: with
+#    XDG_CONFIG_HOME unset (or pointing at ~/.config) it stops at once.
+env -u XDG_CONFIG_HOME bash $R/tests/jev/wiki-hop.sh; echo "exit $?"
+# refusing: XDG_CONFIG_HOME is not set, ...   exit 2
 ```
 
 With the lab, or a stand-in for it, `ctf-juice-recon` runs two real `curl`s:
@@ -150,10 +188,20 @@ nothing about the graphs' judgement), `triage-linux` runs seven real read-only
 commands on this machine:
 
 ```bash
-python3 $P/test/stub_service.py --port 8091 --token-file ~/.config/eidolon/jev.token &
+python3 $R/tests/jev/stub_service.py --port 8091 --token-file ~/.config/eidolon/jev.token &
 eidolon workflow run $P triage-linux --provider mock | grep -o 'final_state[^,]*'
 # final_state\": \"report\"
 kill %1
+```
+
+`wiki-hop` has no stand-in step above, because it needs the browser plugin. To
+run it without Chromium, `tests/jev/wiki-hop.sh` installs jev and the fake
+`browser` into a *temp* config (it refuses any other), starts the stub service
+and runs `Cat` to `Ancient Egypt`:
+
+```bash
+t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state   XDG_DATA_HOME=$t/data bash $R/tests/jev/wiki-hop.sh
+# final_state\": \"arrived\"
 ```
 
 Exit codes of `eidolon workflow run`: 0 completed, 1 parked, 2 failed, 3 refused.
@@ -240,11 +288,11 @@ and mark counting as one, which bounds `wiki-hop` to roughly thirty hops. A
 sorted, so the order is read off the graph's text when it loads); `selftest`
 checks it on `triage-linux`'s `recover`.
 
-A graph is pinned: change `graphs/<id>.json`, then `bash test/pin.sh` to write its
-hash into `workflows/<id>.rn`, and commit both. A graph that does not match its
-workflow's pin is refused before it runs. `test/gen_probes.py` regenerates the
-eleven command tools from one table, and `test/gen_workflows.py` the thin
-per-graph workflows; both have `--check`.
+A graph is pinned: change `graphs/<id>.json`, then `bash tests/jev/pin.sh` (from the
+repo) to write its hash into `workflows/<id>.rn`, and commit both. A graph that does not match its
+workflow's pin is refused before it runs. `tests/jev/gen_probes.py`
+regenerates the eleven command tools from one table, and
+`tests/jev/gen_workflows.py` the thin per-graph workflows; both have `--check`.
 
 ## Uninstall
 

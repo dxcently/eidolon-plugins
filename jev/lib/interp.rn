@@ -837,7 +837,7 @@ async fn run_pinned(name, pin, input) {
     };
     let got = eidolon::sha256(text);
     if got != pin {
-        return fatal("jev " + name + ": the graph's content is " + got + ", not the " + pin + " this workflow pins; refusing to run a graph that was not reviewed with it. If the change is intended, re-pin: jev/test/pin.sh");
+        return fatal("jev " + name + ": the graph's content is " + got + ", not the " + pin + " this workflow pins; refusing to run a graph that was not reviewed with it. If the change is intended, re-pin: tests/jev/pin.sh");
     }
     run_graph(text, input).await
 }

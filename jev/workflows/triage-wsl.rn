@@ -9,7 +9,7 @@
 // wsl.exe, so a Windows host, and the jev service (README, Prerequisites).
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "triage-wsl";
 const PIN = "sha256:644c25ddaf28cfd75d26955de3a31b80c5451825b2b94f12030ef62e5aa4924f";

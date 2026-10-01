@@ -11,7 +11,7 @@
 // the tree it was written for (the Minerva checkout), or give --cwd.
 //
 // The graph is read through `jev_graph` and hash-checked against PIN before it
-// runs; change the graph and the pin together (jev/test/pin.sh).
+// runs; change the graph and the pin together (tests/jev/pin.sh).
 
 const GRAPH = "find-related";
 const PIN = "sha256:d7ea7d0b9a0ecbf1fd00c3aa37e21b3e4360c9fdaa560840bda4da02fb94ba3e";

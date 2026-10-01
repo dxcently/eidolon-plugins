@@ -223,8 +223,8 @@ in "What is mocked" below.
 | piece | in tests | real |
 |---|---|---|
 | the model | `--provider mock`; no graph calls `ask_model` | n/a |
-| `jev_choose`, `jev_entail` | `test/stub_service.py`: rules (first option 0.9, flat, last, down), a word-overlap NLI | the service in the Minerva repo cannot run where this was built (no torch); the tools' request and the interpreter's reading of the answer are what was exercised |
-| `browser_*` for wiki-hop | `test/fake-browser/`: four fake pages, real snapshot format | the browser plugin (no Chromium here) |
+| `jev_choose`, `jev_entail` | `tests/jev/stub_service.py`: rules (first option 0.9, flat, last, down), a word-overlap NLI | the service in the Minerva repo cannot run where this was built (no torch); the tools' request and the interpreter's reading of the answer are what was exercised |
+| `browser_*` for wiki-hop | `tests/jev/fake-browser/`: four fake pages, real snapshot format, a plugin named `browser` (it must be: wiki-hop calls `browser_open`), described as a test double and installed only into a temp config by `tests/jev/wiki-hop.sh` | the browser plugin (no Chromium here) |
 | juice shop | a `python3 -m http.server` on :3001 with a `robots.txt` | the lab |
 | ssh | a shim `ssh` on PATH that logs its argv and runs the command locally | a guest |
 | commands, `grep`, `read`, `curl`, `wsl.exe` | **real** | |
