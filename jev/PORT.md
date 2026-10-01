@@ -10,6 +10,11 @@ what ships, the README is right.
 Source: `Minerva/extensions/jev/` (the old extension-host tools) and
 `Minerva/jev/` (the Python service they called).
 
+**Where the graphs live now.** `eidolon-plugins/jev/graphs/` is the canonical copy
+of the six graphs. The Minerva copies (`Minerva/extensions/jev/graphs`) are the
+old format and are not edited any more; they will be retired after a real-service
+run of the plugin's graphs passes. Until then they are a reference, not a source.
+
 ```
 old                                         what it was
 ------------------------------------------  ---------------------------------------------

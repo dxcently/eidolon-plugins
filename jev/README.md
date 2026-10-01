@@ -15,6 +15,12 @@ workflow that runs it; a person is asked only when the chooser is not sure.
 | `triage-botforge` | `triage-linux` for unattended use over ssh (no NLI, no confidence floor) | `ssh`, the jev service (`jev_choose` only) |
 | `wiki-hop` | follows links from one Wikipedia article to another | the real [`browser`](../browser/) plugin, installed with its service running; the jev service |
 
+**The graphs here are the canonical copy.** `jev/graphs/*.json` in this plugin is
+the one source of truth for the six graphs. The copies in the Minerva repository
+(`Minerva/extensions/jev/graphs`) are the old format, kept only until a
+real-service run of these graphs passes, and will be retired after it. Edit a graph
+here, re-pin it (see the end of this file), and nowhere else.
+
 ```
 eidolon workflow run <jev dir> <graph> --args '{...}'
         └─ workflows/<graph>.rn      pinned to graphs/<graph>.json by sha256
