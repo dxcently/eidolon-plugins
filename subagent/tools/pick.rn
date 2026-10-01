@@ -175,7 +175,8 @@ printf '%s' \"$f\"
 // colon in the first word), `[system]` lines and a cache note; the model rows
 // are the ones whose first word is a `provider:model` key and that carry the
 // " · " separator. Unpriced rows sort last, never as free.
-const CATALOG_SH = "eidolon models 2>/dev/null | awk '
+const CATALOG_SH = "m=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
+printf '%s\n' \"$m\" | awk '
 /^\\[/ { next }
 $1 ~ /:/ && index($0, \" · \") > 0 {
   pin = \"-\"; pout = \"-\"; ctx = \"-\"; key = \"999999999.0000\"
@@ -193,7 +194,10 @@ $1 ~ /:/ && index($0, \" · \") > 0 {
 // The catalog as rows: #{ model, price, ctx, usd } with `usd` the input plus
 // output $/M, or () when the listing names no price.
 async fn catalog() {
-    let out = eidolon::shell(sh_cmd(CATALOG_SH, []), Some(60)).await?;
+    let out = eidolon::shell(sh_eid(CATALOG_SH, []), Some(60)).await?;
+    if out.contains("[exit code") {
+        return Err(`no model list: ${out}`);
+    }
     let rows = [];
     for line in out.split("\n") {
         let f = line.split("\t").collect::<Vec>();
@@ -211,6 +215,9 @@ async fn catalog() {
             ctx = `${f[3]} ctx`;
         }
         rows.push(#{ model: f[0], price: price, ctx: ctx, usd: usd });
+    }
+    if rows.len() == 0 {
+        return Err("`eidolon models` listed no models, so there is nothing to choose from: check that this eidolon has a provider configured (EIDOLON_BIN, if set, names the binary used)");
     }
     Ok(rows)
 }
@@ -342,6 +349,35 @@ fn quote(text) {
     `'${s.replace("'", "'\\''")}'`
 }
 
+// The eidolon binary, found the way every tool of this plugin finds it, and
+// prepended to the scripts that run it. `eidolon` is not on PATH when the
+// session was started without a login shell (a Windows `wsl.exe -e`, a service,
+// cron), so: $EIDOLON_BIN if set -- and then it is the only candidate, a wrong
+// one is an error rather than a quiet fall-through -- else `eidolon` on PATH,
+// else $HOME/.local/bin/eidolon. None found: exit 127 and say how to fix it.
+// Repeated in list.rn, trace.rn, pick.rn, plan.rn and spawn.rn.
+const EID_SH = "eid=
+eid_ok() { [ -f \"$1\" ] && [ -x \"$1\" ] && \"$1\" --version >/dev/null 2>&1; }
+if [ -n \"${EIDOLON_BIN:-}\" ]; then
+  if eid_ok \"$EIDOLON_BIN\"; then eid=$EIDOLON_BIN; fi
+else
+  onpath=$(command -v eidolon 2>/dev/null)
+  if [ -n \"$onpath\" ] && eid_ok \"$onpath\"; then
+    eid=$onpath
+  elif eid_ok \"$HOME/.local/bin/eidolon\"; then
+    eid=$HOME/.local/bin/eidolon
+  fi
+fi
+if [ -z \"$eid\" ]; then
+  if [ -n \"${EIDOLON_BIN:-}\" ]; then
+    printf 'subagent: EIDOLON_BIN is set to %s, which is not an executable that runs (`%s --version` failed). Fix it or unset it.\\n' \"$EIDOLON_BIN\" \"$EIDOLON_BIN\" >&2
+  else
+    printf 'subagent: cannot find a working eidolon binary: `eidolon` on PATH is %s and %s/.local/bin/eidolon does not run. Set EIDOLON_BIN to the full path of one that does.\\n' \"${onpath:-absent}\" \"$HOME\" >&2
+  fi
+  exit 127
+fi
+";
+
 // The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
 // than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
@@ -350,4 +386,9 @@ fn sh_cmd(script, args) {
         cmd += ` ${quote(a)}`;
     }
     cmd
+}
+
+// `sh_cmd` with the eidolon lookup in front: `$eid` is the binary.
+fn sh_eid(script, args) {
+    sh_cmd(EID_SH + script, args)
 }

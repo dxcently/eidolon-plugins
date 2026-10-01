@@ -58,10 +58,6 @@ pub fn workflow() {
     }
 }
 
-fn fatal(msg) {
-    #{ content: msg, is_error: true }
-}
-
 pub async fn run(args) {
     match args.get("status") {
         Some(s) => {
@@ -448,10 +444,6 @@ async fn report(spawned, state, total, notes) {
     Ok(out)
 }
 
-fn money(n) {
-    "$" + `${n}`
-}
-
 fn id_of(made) {
     let id = "";
     for line in made.split("\n") {
@@ -463,57 +455,4 @@ fn id_of(made) {
         }
     }
     id
-}
-
-// Text of a field that may be absent or JSON null (the unit value, which has
-// no text form of its own).
-fn text(value) {
-    match value {
-        Some(v) => {
-            if json::to_string(v).unwrap_or("null") == "null" {
-                ""
-            } else {
-                `${v}`
-            }
-        }
-        None => "",
-    }
-}
-
-// A number out of a JSON value, or None for null or text that is not one.
-fn as_number(v) {
-    if json::to_string(v).unwrap_or("null") == "null" {
-        return None;
-    }
-    match `${v}`.parse::<f64>() {
-        Ok(n) => Some(n),
-        Err(_) => None,
-    }
-}
-
-fn number(s) {
-    match s.parse::<f64>() {
-        Ok(n) => n,
-        Err(_) => 0.0,
-    }
-}
-
-fn opt_int(v, dflt) {
-    match v {
-        Some(x) => match `${x}`.parse::<i64>() {
-            Ok(n) => n,
-            Err(_) => dflt,
-        },
-        None => dflt,
-    }
-}
-
-fn clamp(n, lo, hi) {
-    if n < lo {
-        lo
-    } else if n > hi {
-        hi
-    } else {
-        n
-    }
 }

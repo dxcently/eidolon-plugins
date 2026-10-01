@@ -41,7 +41,10 @@ pub async fn call(input) {
         return Err(msg);
     }
     let lines = clamp_lines(input.get("lines"));
-    let out = eidolon::shell(sh_cmd(TRACE_SH, [id, `${lines}`]), Some(120)).await?;
+    let out = eidolon::shell(sh_eid(TRACE_SH, [id, `${lines}`]), Some(120)).await?;
+    if out.contains("[exit code") {
+        return Err(out);
+    }
     Ok(render(out, id, lines))
 }
 
@@ -54,7 +57,7 @@ const TRACE_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 id=$1
 lines=$2
 dir=$root/$id
-models=$(eidolon models 2>/dev/null)
+models=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so spend cannot be priced.\\n' \"$eid\" >&2; exit 4; }
 
 # How a child ended, from the status file `shell_background` writes beside its
 # log: compact JSON, `code` null when a signal ended it.
@@ -84,7 +87,7 @@ spend_of() {
   journal=$1
   [ -n \"$journal\" ] && [ -f \"$journal\" ] || { printf 'nojournal'; return 0; }
   rates=$(printf '%s\\n' \"$models\" | awk -v m=\"$2\" '$1 == m && index($0, \" · \") > 0 { if (match($0, /\\$[0-9.]+\\/[0-9.]+ per M/)) { s = substr($0, RSTART + 1, RLENGTH - 1); split(s, a, \"/\"); printf \"%s %s\", a[1], a[2] + 0 } exit }')
-  eidolon log --json \"$journal\" 2>/dev/null | awk -v rates=\"$rates\" '
+  \"$eid\" log --json \"$journal\" 2>/dev/null | awk -v rates=\"$rates\" '
     function num(s, k,    r) {
       if (match(s, \"\\\"\" k \"\\\":[0-9]+\")) { r = substr(s, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return r + 0 }
       return 0
@@ -323,6 +326,35 @@ fn quote(text) {
     `'${s.replace("'", "'\\''")}'`
 }
 
+// The eidolon binary, found the way every tool of this plugin finds it, and
+// prepended to the scripts that run it. `eidolon` is not on PATH when the
+// session was started without a login shell (a Windows `wsl.exe -e`, a service,
+// cron), so: $EIDOLON_BIN if set -- and then it is the only candidate, a wrong
+// one is an error rather than a quiet fall-through -- else `eidolon` on PATH,
+// else $HOME/.local/bin/eidolon. None found: exit 127 and say how to fix it.
+// Repeated in list.rn, trace.rn, pick.rn, plan.rn and spawn.rn.
+const EID_SH = "eid=
+eid_ok() { [ -f \"$1\" ] && [ -x \"$1\" ] && \"$1\" --version >/dev/null 2>&1; }
+if [ -n \"${EIDOLON_BIN:-}\" ]; then
+  if eid_ok \"$EIDOLON_BIN\"; then eid=$EIDOLON_BIN; fi
+else
+  onpath=$(command -v eidolon 2>/dev/null)
+  if [ -n \"$onpath\" ] && eid_ok \"$onpath\"; then
+    eid=$onpath
+  elif eid_ok \"$HOME/.local/bin/eidolon\"; then
+    eid=$HOME/.local/bin/eidolon
+  fi
+fi
+if [ -z \"$eid\" ]; then
+  if [ -n \"${EIDOLON_BIN:-}\" ]; then
+    printf 'subagent: EIDOLON_BIN is set to %s, which is not an executable that runs (`%s --version` failed). Fix it or unset it.\\n' \"$EIDOLON_BIN\" \"$EIDOLON_BIN\" >&2
+  else
+    printf 'subagent: cannot find a working eidolon binary: `eidolon` on PATH is %s and %s/.local/bin/eidolon does not run. Set EIDOLON_BIN to the full path of one that does.\\n' \"${onpath:-absent}\" \"$HOME\" >&2
+  fi
+  exit 127
+fi
+";
+
 // The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
 // than whatever `eidolon::shell` runs, so the same text behaves the same on
 // every Unix this plugin is installed on.
@@ -332,4 +364,9 @@ fn sh_cmd(script, args) {
         cmd += ` ${quote(a)}`;
     }
     cmd
+}
+
+// `sh_cmd` with the eidolon lookup in front: `$eid` is the binary.
+fn sh_eid(script, args) {
+    sh_cmd(EID_SH + script, args)
 }

@@ -14,7 +14,7 @@
 pub fn manifest() {
     #{
         name: "subagent",
-        version: "0.2.0",
+        version: "0.2.1",
         description: "child eidolon sessions for a bounded task: spawn on a model picked per kind, plan formations, budgets, list, trace, steer, cancel, and a fan-out workflow",
         claims: #{
             tools: ["spawn", "list", "trace", "steer", "cancel", "pick", "plan"],

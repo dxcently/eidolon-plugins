@@ -1,0 +1,66 @@
+// subagent/lib/util.rn -- helpers the plugin's workflows share. Upstream compiles
+// every `lib/*.rn` in front of a workflow (and only a workflow: a tool file is
+// compiled alone, so tools/ keeps its own copies), in one unit where a bare
+// name resolves across files. `fanout.rn` and `door.rn` each have their own
+// `workflow()` and `run()`, so neither belongs here.
+
+fn fatal(msg) {
+    #{ content: msg, is_error: true }
+}
+
+fn money(n) {
+    "$" + `${n}`
+}
+
+// Text of a field that may be absent or JSON null (the unit value, which has
+// no text form of its own).
+fn text(value) {
+    match value {
+        Some(v) => {
+            if json::to_string(v).unwrap_or("null") == "null" {
+                ""
+            } else {
+                `${v}`
+            }
+        }
+        None => "",
+    }
+}
+
+// A number out of a JSON value, or None for null or text that is not one.
+fn as_number(v) {
+    if json::to_string(v).unwrap_or("null") == "null" {
+        return None;
+    }
+    match `${v}`.parse::<f64>() {
+        Ok(n) => Some(n),
+        Err(_) => None,
+    }
+}
+
+fn number(s) {
+    match s.parse::<f64>() {
+        Ok(n) => n,
+        Err(_) => 0.0,
+    }
+}
+
+fn opt_int(v, dflt) {
+    match v {
+        Some(x) => match `${x}`.parse::<i64>() {
+            Ok(n) => n,
+            Err(_) => dflt,
+        },
+        None => dflt,
+    }
+}
+
+fn clamp(n, lo, hi) {
+    if n < lo {
+        lo
+    } else if n > hi {
+        hi
+    } else {
+        n
+    }
+}

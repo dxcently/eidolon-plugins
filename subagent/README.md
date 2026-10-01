@@ -20,6 +20,11 @@ them. The child reports back to the session that started it with `send`.
 | `fanout` | `workflows/fanout.rn` | run a plan: spawn each role's children, watch finished children's spend against the thresholds (step down, ask, stop), report each result |
 | `door` | `workflows/door.rn` | one command for an orchestrator outside eidolon (Claude Code, Codex, aoide): `{tool, input}` in, the tool's answer out |
 
+| other | file | does |
+|---|---|---|
+| `lib/util.rn` | `lib/util.rn` | helpers the two workflows share; upstream compiles `lib/` in front of a *workflow* only, so the tools stay self-contained and carry their own copies |
+| `subagent-door` | `bin/subagent-door` | POSIX wrapper: `subagent-door '<door args JSON>'` finds the plugin directory and eidolon, and runs the door |
+
 A tool file's **stem is the bare verb** and its declared `name:` is the
 **namespaced** one: `tools/spawn.rn` is adopted as `subagent_spawn`, because
 the plugin's directory name is the namespace. That is why these files are not
@@ -184,8 +189,9 @@ eidolon workflow run ~/.config/eidolon/plugins/subagent fanout --args '<the plan
 eidolon workflow resume --plugin <plugin dir> --answer stop <session> <run>   # for a parked run
 ```
 
-(`workflow run`'s first argument is the plugin directory, not its name: a bare `subagent`
-is refused. Use the installed path, or a checkout.) Add `parallel`, `poll_s` and `max_polls` to the
+(`workflow run`'s first argument is the plugin **directory**, not its name: a bare `subagent`
+is refused, and upstream has no name lookup. The installed directory is
+`${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent`; or use a checkout.) Add `parallel`, `poll_s` and `max_polls` to the
 args to tune the waiting. The report has one block per child (state, spend, the
 tail of its log, which is where its report or its question is) and a note for
 every threshold that acted.
@@ -197,9 +203,27 @@ An orchestrator that is not an eidolon session has no tools of its own to call;
 
 ```bash
 eidolon workflow run ~/.config/eidolon/plugins/subagent door --args '{"tool":"spawn","input":{"task":"count the files","kind":"research"}}'
-# from a Windows host (no shell to expand ~ under -e, so go through bash):
-#   wsl.exe -d Ubuntu -e bash -lc "eidolon workflow run ~/.config/eidolon/plugins/subagent door --args '...'"
 ```
+
+`eidolon workflow run` takes the plugin **directory**, not its name, and upstream
+has no lookup by name: the directory is
+`${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent`. So the plugin
+ships a wrapper that resolves it, and finds the eidolon binary (`EIDOLON_BIN`,
+then `PATH`, then `~/.local/bin`; see Prerequisites), and runs exactly the
+command above:
+
+```bash
+~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'
+# from a Windows host, with no login shell and no `~` expansion under -e:
+wsl.exe -d Ubuntu -e /home/<user>/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'
+```
+
+The argument is the door's args JSON, and anything after it goes to `workflow run`
+(`--yolo`). The wrapper's exit code is the door's. `plugins install` copies `bin/`
+with its executable bit (it copies files with `fs::copy`, which keeps the mode);
+if a copy ever loses it, run `eidolon workflow run
+"${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent" door --args '<json>'`
+yourself, or `sh .../bin/subagent-door '<json>'`.
 
 `tool` is `spawn`, `pick`, `plan`, `list`, `trace`, `steer`, `cancel` or `schema`;
 `input` is that tool's input, and the tool's answer comes back unchanged as the
@@ -229,8 +253,17 @@ answer.
   macOS), no `setsid` binary, no `/proc`, no `sed -i`, and no `readlink -f`.
 - eidolon **with the plugin system** — `eidolon plugins --help` is the proof;
   the `eidolon` on an old `PATH` has none, and the install below fails there.
-  The tools shell out to `eidolon` on `PATH` (`eidolon models`, `eidolon log`,
-  and `eidolon run` for the child), so that must be the same plugin-capable one.
+  The tools shell out to eidolon (`eidolon models`, `eidolon log`, and
+  `eidolon run` for the child), so it must be the same plugin-capable one. They
+  find it as: **`$EIDOLON_BIN`** if set (and then only that: a wrong value is an
+  error, not a fall-through), else `eidolon` on `PATH`, else
+  `$HOME/.local/bin/eidolon` -- each only if it is an executable file that
+  answers `--version`. None works: the tool fails and says so, naming
+  `EIDOLON_BIN`. This matters when the session was not started from a login
+  shell (a Windows `wsl.exe -e`, a service, cron): `PATH` there may hold no
+  eidolon at all, or a Windows-side stub that is executable and runs nothing. The
+  child `subagent_spawn` starts runs the same binary and gets `EIDOLON_BIN` set
+  to it.
   Plus `shell_background` and the swarm's `send` (any upstream with the swarm
   built-ins).
 - The swarm **not disabled**: `[swarm] enabled = true` in
@@ -275,9 +308,9 @@ does not compile is a note instead (`[tool] … failed to compile`, or
 
 ```bash
 eidolon plugins --dir ~/.config/eidolon/plugins
-# subagent 0.2.0
+# subagent 0.2.1
 #     child eidolon sessions for a bounded task: spawn on a model picked per kind, plan formations, budgets, list, trace, steer, cancel, and a fan-out workflow
-#     payloads tools, workflows
+#     payloads lib, tools, workflows
 #     claims   tools: spawn, list, trace, steer, cancel, pick, plan
 #     claims   workflows: fanout, door
 #     subagent_cancel              vouched by …
@@ -307,6 +340,12 @@ The door, and a spawn that has no pick (nothing is started):
 eidolon workflow run ~/.config/eidolon/plugins/subagent door --args '{"tool":"schema"}'
 eidolon workflow run ~/.config/eidolon/plugins/subagent door --args '{"tool":"spawn","input":{"task":"x","kind":"zzz"}}'
 # {"report":"{\"status\":\"needs_choice\",\"kind\":\"zzz\", ...","run":1,"session":"...","status":"completed"}
+
+# the same, by plugin name, and with no eidolon on PATH:
+~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'
+EIDOLON_BIN=/nonexistent ~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'; echo $?
+# subagent-door: EIDOLON_BIN is set to /nonexistent, which is not an executable that runs. ...
+# 127
 ```
 
 A spawn, end to end — this needs a model that calls tools and takes a while:
