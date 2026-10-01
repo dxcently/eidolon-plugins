@@ -15,7 +15,7 @@ services, no credentials, nothing to trust — the plugin ships no tools.
 ## Install
 
 ```
-eidolon plugins install dxcently/eidolon-plugins libsfixture
+eidolon plugins install dxcently/eidolon-plugins tests/libsfixture
 ```
 
 The install line names the vendoring:
