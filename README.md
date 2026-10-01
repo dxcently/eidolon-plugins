@@ -8,10 +8,12 @@ installs the same way.
 
 ## The plugins
 
-| plugin | gives eidolon | runs alongside | install | status |
-|---|---|---|---|---|
-| [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back` | `eidolon-browser`, a Rust service driving one headless Chromium | by hand — see its README | works on upstream eidolon |
-| [`subagent/`](subagent/) | `subagent_spawn`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` | works on upstream eidolon |
+| plugin | gives eidolon | runs alongside | install |
+|---|---|---|---|
+| [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back`, `browser_state`; workflows `page_walk`, `page_watch` | `eidolon-browser`, a Rust service driving one headless Chromium | `eidolon plugins install dxcently/eidolon-plugins browser` — see its README for the service |
+| [`subagent/`](subagent/) | `subagent_spawn`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` |
+
+Both need eidolon with the plugin runtime (upstream `master`).
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in
 `search` tool, tied to the session's own key. To read a result, use `fetch`,
@@ -31,24 +33,27 @@ order: **Prerequisites**, **Install**, **Verify**, **Uninstall**. See
 ## Layout
 
 ```
-<name>/
-├── README.md       what it is, and Prerequisites / Install / Verify / Uninstall
-├── plugin.rn       the manifest: name (the folder's), version, description, claims
-├── tools/<verb>.rn → ~/.config/eidolon/plugins/<name>/tools/   one file per verb, declaring "<name>_<verb>"
-├── service/        a Rust crate, when the tools need something running beside eidolon
-└── package.nix     how the flake builds that service
+<name>/                        → ~/.config/eidolon/plugins/<name>/
+├── plugin.rn      the manifest: name, version, description, claims
+├── README.md      what it is, and Prerequisites / Install / Verify / Uninstall
+├── tools/*.rn     one file per tool: the stem is the bare verb, registration is <name>_<verb>
+├── workflows/*.rn programs that drive the plugin's tools (optional)
+├── service/       a Rust crate, when the tools need something running beside eidolon
+└── package.nix    how the flake builds that service
 ```
 
-A tool file carries everything it needs, endpoint included (upstream's rule:
-a tool is one file you can hand to somebody). The folder *is* the plugin: the
-directory's name is the namespace, and `tools/<verb>.rn` is adopted as
-`<name>_<verb>` — the stem is the bare verb, the declared `name:` is the
-namespaced one, and a plugin cannot shadow a built-in, so a verb file is named
-for its verb and nothing else. `eidolon plugins install` copies the tree whole
-into `~/.config/eidolon/plugins/`.
+The folder *is* the plugin directory: install it by putting the folder where
+eidolon looks, and every `tools/*.rn` is adopted as `<name>_<verb>`, attributed
+to the plugin in the gate's question and the log's audit lines. A tool file
+carries everything it needs, endpoint included (upstream's rule: a tool is one
+file you can hand to somebody). `plugin.rn` declares only what the plugin says
+about itself — the layout is what names the verbs. A plugin cannot shadow a
+built-in.
 
-`browser/` is still the older hand-installed shape — no `plugin.rn`, its tools
-copied into `~/.config/eidolon/tools/` — until its plugin port lands.
+Upstream eidolon without the plugin runtime wants the flat install instead:
+`tools/*.rn` copied into `~/.config/eidolon/tools/` under their own names
+(`browser_open.rn`, …). That layout is in this repo's history before the plugin
+port; the two do not share tool filenames.
 
 ## Building
 

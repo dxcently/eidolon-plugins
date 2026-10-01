@@ -1,7 +1,7 @@
 # browser
 
 A real browser for eidolon: one headless Chromium, shared by every session on
-the machine, driven through six tools.
+the machine, driven through six tools, plus `browser_state` — the read a watch's workflow cannot do — and the `page_walk` / `page_watch` workflows.
 
 | tool | does |
 |---|---|
@@ -26,8 +26,9 @@ page scripts.
 ## Prerequisites
 
 - Linux or WSL.
-- eidolon with `api_request` (upstream since `a618ef1`, 2026-09-21). An older
-  eidolon can't compile the tools, and **Verify** shows fewer than 6.
+- eidolon with `api_request` (upstream since `a618ef1`, 2026-09-21) **and the
+  plugin runtime** — the tools are installed as a plugin directory, so an older
+  eidolon can't compile them and **Verify** shows fewer than 6.
 - One of:
   - **Nix** with flakes, or
   - **Rust** 1.85+ (`cargo`) and a **Chromium** or Chrome binary.
@@ -38,7 +39,7 @@ page scripts.
 
    ```bash
    # Nix: builds it with Chromium included
-   nix profile install github:dxcently/eidolon-extensions#browser
+   nix profile install github:dxcently/eidolon-plugins#browser
    ```
 
    ```bash
@@ -46,22 +47,54 @@ page scripts.
    cargo install --path browser/service
    ```
 
-2. The tools:
+2. The plugin — this directory *is* the plugin directory:
 
    ```bash
-   mkdir -p ~/.config/eidolon/tools
-   cp browser/tools/browser_*.rn ~/.config/eidolon/tools/
+   mkdir -p ~/.config/eidolon/plugins
+   cp -r browser ~/.config/eidolon/plugins/browser
    ```
 
-   (From a Nix-only install without a clone: `git clone https://github.com/dxcently/eidolon-extensions` first.)
+   (A symlink keeps one copy: `ln -s "$PWD/browser" ~/.config/eidolon/plugins/browser`.
+   From a Nix-only install without a clone: `git clone https://github.com/dxcently/eidolon-plugins` first.)
+
+   Then vouch its verbs — that is what stops the gate asking on every call — and
+   grant the token file each verb reads, so the credential is a recorded
+   permission instead of a side effect of the copy:
+
+   ```bash
+   eidolon plugins trust browser
+   for v in open snapshot click type read back; do
+     eidolon plugins grant browser_$v file:~/.config/eidolon/browser.token
+   done
+   ```
+
+   With a person at the console the first call of each verb asks instead, once
+   per verb, and the answer is written to the same store. Headless there is
+   nobody to answer, so grant them here.
+
+   Coming from the flat install (the commit before this one)? Remove the old
+   copies first — `rm -f ~/.config/eidolon/tools/browser_*.rn` — or the plugin's
+   verbs collide with the operator's own and the plugin's are refused by name.
 
 3. Start the service. It makes the token file on first run.
 
+   The manifest declares the daemon, so the harness drives it — and the
+   operator's yes is recorded against the declaration itself:
+
    ```bash
-   eidolon-browser
+   eidolon plugins service approve browser   # the yes, bound to the declaration's hash
+   eidolon plugins service start browser     # spawns it detached, waits for /health, reports the pid
+   eidolon plugins service status browser    # probes the port; never trusts a record
    ```
 
-   Leave it running, or run it as a systemd user service:
+   `start` refuses until the declaration is approved, and asks again if the
+   `service:` block changes — an update cannot inherit the right to run a
+   process. The child outlives the CLI and its output appends to
+   `<cache>/eidolon/services/browser.log`; `stop` signals the recorded pid
+   only after `/proc` agrees it is that process.
+
+   On a machine that should always have it, a systemd user unit is still the
+   better tool for that job:
 
    ```bash
    mkdir -p ~/.config/systemd/user
@@ -86,8 +119,9 @@ page scripts.
 ```bash
 curl -s http://127.0.0.1:8090/health
 # {"chromium_installed":true,"status":"ok"}
+eidolon plugins | grep -A8 '^browser '     # the verbs and workflows, and whether each is vouched
 eidolon tools | grep -c '"name": "browser_'
-# 6
+# 7
 ```
 
 `chromium_installed: false` means no Chromium was found: set
@@ -98,9 +132,15 @@ eidolon tools | grep -c '"name": "browser_'
 ```bash
 systemctl --user disable --now eidolon-browser 2>/dev/null
 rm -f ~/.config/systemd/user/eidolon-browser.service
-rm -f ~/.config/eidolon/tools/browser_*.rn ~/.config/eidolon/browser.token
+rm -rf ~/.config/eidolon/plugins/browser ~/.config/eidolon/browser.token
 nix profile remove browser 2>/dev/null || cargo uninstall eidolon-browser
 ```
+
+The vouch and grant rows stay behind in `~/.config/eidolon/policy.permits.rn`:
+`eidolon plugins untrust browser` drops the vouches, and
+`eidolon plugins revoke browser_open file:~/.config/eidolon/browser.token` drops
+one grant (once per verb). They are inert once the directory is gone, but the
+store is the record and it should say what is true.
 
 ## Settings
 

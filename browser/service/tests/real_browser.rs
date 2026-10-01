@@ -331,6 +331,21 @@ fn open_snapshot_click_type_read_back() {
 }
 
 #[test]
+fn back_between_two_http_pages_lands_and_says_so() {
+    let Some(s) = Service::start() else { return };
+    let b = site_b();
+    let a = site_a(&b.origin);
+    s.ok("open", json!({ "url": format!("{}/a.html", a.origin) }));
+    s.ok("open", json!({ "url": format!("{}/b.html", a.origin) }));
+    let back = s.ok("back", json!({}));
+    assert_eq!(back["went_back"], true);
+    assert!(back["url"].as_str().unwrap().ends_with("/a.html"), "{back}");
+    // The document we came back to is really the one being read now.
+    let (_, body) = s.snapshot(json!({}));
+    assert!(body.contains("link \"other\""), "{body}");
+}
+
+#[test]
 fn refs_from_a_later_navigation_click_and_old_ones_do_not() {
     let Some(s) = Service::start() else { return };
     s.ok("open", json!({ "url": PAGE }));
