@@ -21,9 +21,10 @@ use chromiumoxide::cdp::browser_protocol::input::{
     InsertTextParams, MouseButton,
 };
 use chromiumoxide::cdp::browser_protocol::page::{
-    DialogType, EventDomContentEventFired, EventFrameStartedLoading, EventJavascriptDialogOpening,
-    EventLoadEventFired, GetFrameTreeParams, GetNavigationHistoryParams,
-    HandleJavaScriptDialogParams, NavigateParams, NavigateToHistoryEntryParams,
+    DialogType, EventDomContentEventFired, EventFrameNavigated, EventFrameStartedLoading,
+    EventFrameStoppedLoading, EventJavascriptDialogOpening, EventLoadEventFired,
+    GetFrameTreeParams, GetNavigationHistoryParams, HandleJavaScriptDialogParams, NavigateParams,
+    NavigateToHistoryEntryParams,
 };
 use chromiumoxide::cdp::browser_protocol::target::{
     CloseTargetParams, CreateBrowserContextParams, CreateTargetParams, EventTargetCreated,
@@ -692,17 +693,46 @@ impl State {
             let entries = &history.result.entries;
             let (here, there) = (&entries[idx as usize], &entries[idx as usize - 1]);
             let same_document = strip_fragment(&here.url) == strip_fragment(&there.url);
-            let mut loaded = page
+            // Chromium 154 delivers no `Page.loadEventFired` for a history
+            // navigation that lands on a network document — nor, measured
+            // the same way, DomContentEventFired or FrameStartedLoading —
+            // while a data: entry still delivers them all (which is why the
+            // rig never saw this). So wait for the FIRST of every completion
+            // signal the session still sends; whichever arrives, the entry
+            // has navigated.
+            let mut load = page
                 .event_listener::<EventLoadEventFired>()
+                .await
+                .map_err(|e| e.to_string())?;
+            let mut ready = page
+                .event_listener::<EventDomContentEventFired>()
+                .await
+                .map_err(|e| e.to_string())?;
+            let mut navigated = page
+                .event_listener::<EventFrameNavigated>()
+                .await
+                .map_err(|e| e.to_string())?;
+            let mut stopped = page
+                .event_listener::<EventFrameStoppedLoading>()
                 .await
                 .map_err(|e| e.to_string())?;
             page.execute(NavigateToHistoryEntryParams::new(there.id))
                 .await
                 .map_err(|e| format!("back: {e}"))?;
             if !same_document {
-                tokio::time::timeout(Duration::from_secs_f64(NAV_TIMEOUT_S), loaded.next())
-                    .await
-                    .map_err(|_| format!("back: no load event within {NAV_TIMEOUT_S}s"))?;
+                tokio::time::timeout(Duration::from_secs_f64(NAV_TIMEOUT_S), async {
+                    tokio::select! {
+                        _ = load.next() => (),
+                        _ = ready.next() => (),
+                        _ = navigated.next() => (),
+                        _ = stopped.next() => (),
+                    }
+                })
+                .await
+                .map(|_| ())
+                .map_err(|_| {
+                    format!("back: the history entry did not finish loading within {NAV_TIMEOUT_S}s")
+                })?;
             }
         }
         self.refs.clear();
