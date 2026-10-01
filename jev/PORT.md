@@ -188,10 +188,13 @@ running.
 - A workflow gets `tool_call`, `ask_model`, `park`, `json`, `sha256` and the Rune
   default modules. **No regex, no clock, no file read.**
 - A run is **replayed** on resume from its journal, so the program must be
-  deterministic. Rune objects have unstable key order; the interpreter sorts keys
-  wherever order decides anything (the `transitions` menu is in alphabetical event
-  order, where the Python one was in document order: for `recover` that makes
-  ABORT the first option, where CONTINUE was).
+  deterministic. Rune objects iterate in sorted key order, so the interpreter sorts keys
+  wherever order decides nothing, and reads the order off the graph's text where
+  it decides something: a `transitions` menu is in the graph's own event order
+  (`key_orders` in `lib/graph.rn`, stored per state as `on_order`), as the Python
+  one was. A first port listed them alphabetically, which put ABORT before
+  CONTINUE in `recover`; a chooser that leans to the first option would have
+  aborted. `selftest` checks it.
 - **200 steps** per run, a ceiling a plugin can lower and not raise. Every tool
   call, scorer call and mark is a step. `wiki-hop` costs about five steps a hop,
   so its 30-hop budget fits; the step cap is the real bound on a long run, and

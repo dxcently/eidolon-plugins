@@ -236,8 +236,9 @@ other than `equals`, `count`, `entails` and `matches` (as a tool's `expect`),
 clock**, so `wall_s` is not enforced (the steps, actions, escalations and visits
 budgets are); and a run is capped at **200 steps**, every tool call, scorer call
 and mark counting as one, which bounds `wiki-hop` to roughly thirty hops. A
-`transitions` menu is in alphabetical event order, where the old interpreter's
-was in document order.
+`transitions` menu keeps the graph's own event order (a parsed object is
+sorted, so the order is read off the graph's text when it loads); `selftest`
+checks it on `triage-linux`'s `recover`.
 
 A graph is pinned: change `graphs/<id>.json`, then `bash test/pin.sh` to write its
 hash into `workflows/<id>.rn`, and commit both. A graph that does not match its

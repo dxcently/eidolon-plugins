@@ -118,6 +118,90 @@ fn check_state(path, st, errors) {
     }
 }
 
+// The keys of every object in a JSON text, in the order the text gives them,
+// by path ("/states/recover/on" -> ["CONTINUE", "ABORT"]; the root is ""). A
+// parsed object does not keep that order (Rune sorts it), and a `transitions`
+// menu is in the graph's own event order, so the order is read off the text.
+// The text has already parsed as JSON; this only follows its quotes, braces
+// and commas.
+fn key_orders(text) {
+    let cs = text.chars().collect::<Vec>();
+    let orders = #{};
+    let stack = [];
+    let i = 0;
+    while i < cs.len() {
+        let c = cs[i];
+        if c == '"' {
+            let s = "";
+            i += 1;
+            while i < cs.len() && cs[i] != '"' {
+                if cs[i] == '\\' && i + 1 < cs.len() {
+                    i += 1;
+                }
+                s += `${cs[i]}`;
+                i += 1;
+            }
+            if stack.len() > 0 {
+                let top = stack[stack.len() - 1];
+                if top.obj && top.want_key {
+                    top.keys.push(s.clone());
+                    top.cur = s;
+                    top.want_key = false;
+                }
+            }
+        } else if c == '{' || c == '[' {
+            let path = "";
+            if stack.len() > 0 {
+                let top = stack[stack.len() - 1];
+                let seg = if top.obj { top.cur.clone() } else { `${top.idx}` };
+                path = top.path.clone() + "/" + seg;
+            }
+            stack.push(#{ obj: c == '{', path: path, keys: [], cur: "", want_key: c == '{', idx: 0 });
+        } else if c == '}' || c == ']' {
+            match stack.pop() {
+                Some(top) => {
+                    if top.obj {
+                        orders[top.path] = top.keys;
+                    }
+                }
+                None => {}
+            }
+        } else if c == ',' {
+            if stack.len() > 0 {
+                let top = stack[stack.len() - 1];
+                if top.obj {
+                    top.want_key = true;
+                } else {
+                    top.idx += 1;
+                }
+            }
+        }
+        i += 1;
+    }
+    orders
+}
+
+// The `on` events of an object, document order first (`order` is the key list
+// the text gave), then any the text did not give, sorted. Never drops one.
+fn events_in_order(on, order) {
+    let out = [];
+    let seen = #{};
+    if order is Vec {
+        for ev in order {
+            if on.contains_key(ev) && !seen.contains_key(ev) {
+                seen[ev] = true;
+                out.push(ev.clone());
+            }
+        }
+    }
+    for ev in sorted_keys(on) {
+        if !seen.contains_key(ev) {
+            out.push(ev.clone());
+        }
+    }
+    out
+}
+
 // The graph at hand: the parsed document and its state table, or Err(reason)
 // naming everything unsupported.
 fn load_graph(text) {
@@ -136,6 +220,21 @@ fn load_graph(text) {
     }
     if !paths.contains_key(`${oget_or(doc, "initial", "")}`) {
         errors.push("initial '" + `${oget_or(doc, "initial", "")}` + "' is not a top-level state");
+    }
+    // each state remembers the order its `on` events are written in
+    let orders = key_orders(text);
+    for p in sorted_keys(paths) {
+        let st = paths[p];
+        match oget(st, "on") {
+            Some(on) => {
+                let key = "";
+                for part in p.split(".") {
+                    key += "/states/" + part;
+                }
+                st["on_order"] = events_in_order(on, oget_or(orders, key + "/on", ()));
+            }
+            None => {}
+        }
     }
     let meta_jev = oget_or(oget_or(doc, "meta", #{}), "jev", #{});
     for ev in sorted_keys(oget_or(doc, "on", #{})) {

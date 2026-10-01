@@ -123,11 +123,12 @@ fn options_from_refs(rt, cfg, scope) {
     Ok(out)
 }
 
-// The state's outgoing events (not the reserved ones), in sorted order.
+// The state's outgoing events (not the reserved ones), in the order the graph
+// writes them (`on_order`, set when the graph is loaded).
 fn options_from_transitions(st) {
     let out = [];
     let on = oget_or(st, "on", #{});
-    for ev in sorted_keys(on) {
+    for ev in events_in_order(on, oget_or(st, "on_order", ())) {
         if ev == "PICK" || ev == "EMPTY" || ev == "ERROR" {
             continue;
         }

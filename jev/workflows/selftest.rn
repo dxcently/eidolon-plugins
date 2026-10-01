@@ -104,6 +104,24 @@ fn rx_group(pattern, text, name) {
     }
 }
 
+// The labels of a state's `transitions` menu, in the order build_options gives them.
+fn menu_labels(text, path) {
+    let labels = [];
+    match load_graph(text) {
+        Ok(g) => {
+            let rt = new_rt(g, #{});
+            let st = state_at(g, path);
+            let choose = st.meta.choose;
+            match build_options(rt, st, choose, scope_of(rt)) {
+                Ok(os) => { for o in os { labels.push(o.label); } }
+                Err(_) => { labels.push("error"); }
+            }
+        }
+        Err(e) => { labels.push("refused: " + e); }
+    }
+    labels
+}
+
 pub async fn run(args) {
     let out = [];
     let bad = [];
@@ -211,6 +229,16 @@ pub async fn run(args) {
         }
         Err(e) => check(out, bad, "jev_graph draws", "error: " + `${e}`, "drawn"),
     }
+
+    // a `transitions` menu is in the graph's own event order, not alphabetical:
+    // `recover` lists CONTINUE before ABORT, and a nested state keeps its order too
+    let rec_labels = match read_graph("triage-linux").await {
+        Ok(t) => menu_labels(t, ["recover"]),
+        Err(e) => ["unreadable: " + e],
+    };
+    check(out, bad, "transitions menu keeps document order (recover)", rec_labels, ["continue where it left off", "stop and report what is known"]);
+    let ordered = "{\"id\":\"o\",\"initial\":\"p\",\"states\":{\"p\":{\"initial\":\"q\",\"states\":{\"q\":{\"meta\":{\"choose\":{\"from\":\"transitions\"}},\"on\":{\"ZED\":{\"target\":\"q\"},\"ALPHA\":{\"target\":\"q\",\"description\":\"a \\\"quoted\\\" {brace}\"},\"MID\":\"q\"}}}}}}";
+    check(out, bad, "transitions menu keeps document order (nested, odd text)", menu_labels(ordered, ["p", "q"]), ["ZED", "a \"quoted\" {brace}", "MID"]);
 
     let text = "";
     for l in out {
