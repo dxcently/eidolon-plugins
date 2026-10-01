@@ -29,7 +29,7 @@ report addressable and the journal findable.
 |---|---|
 | `{id}` | the child's id, `sa-<seconds>-<4 hex>`, which is also the name of its state directory |
 | `{parent}` | the parent's roster id (`peers` shows it; a chat's is `<cwd basename>-<4 hex>`) |
-| `{task}` | what to do, in the parent's words |
+| `{task}` | what to do, in the parent's words; when the spawn carried `tools`, followed by a paragraph naming them as an advisory confinement (nothing enforces it) |
 | `{cwd}` | not filled in; the child runs in the parent's directory |
 | `{deadline}` | minutes before the child is stopped and reports anyway |
 

@@ -1,14 +1,21 @@
 // `subagent_trace`: the tail of one child's log, plus whether it is still
-// running and how it ended. The log is the only window on a child mid-run — no
-// state of its turns is readable from outside, on purpose — so this is what a
-// steer is judged by: send it, then read what the child did with it.
+// running, how it ended, and what it has spent. The log is the only window on a
+// child mid-run -- no state of its turns is readable from outside, on purpose --
+// so this is what a steer is judged by: send it, then read what the child did
+// with it. A child that needs a choice ends with it in its final text; this is
+// where the orchestrator reads it.
+//
+// Spend is read from the child's journal exactly as `subagent_list` reads it
+// (see the head of that file for the records and for what is known when): calls
+// and dollars as a low-high range, "unpriced" for a model the catalog does not
+// price, "unknown" for a child with no journal yet -- never $0.
 //
 // One file, self-contained, like every tool file: the manifest, the call, the
 // POSIX script and the helpers it needs.
 pub fn manifest() {
     #{
         name: "subagent_trace",
-        description: "The last lines of one subagent's log, with whether its process is alive and how it ended. The log is the child's whole output: its stdout, its stderr, and the `session:` line naming its journal. Read-only.",
+        description: "The last lines of one subagent's log, with whether its process is alive, how it ended, its budget and what it has spent (model calls and dollars from its journal; unpriced is said, never $0). The log is the child's whole output: its stdout, its stderr, and the `session:` line naming its journal. A child that needs a decision ends with the question in its final text: read it here and answer with `subagent_steer`. Read-only.",
         approval: "read_only",
         input_schema: #{
             "type": "object",
@@ -33,17 +40,21 @@ pub async fn call(input) {
         let msg = `not a subagent id: ${input.id} (they look like sa-1790508668-ab12) -- subagent_list has the ones there are`;
         return Err(msg);
     }
-    eidolon::shell(sh_cmd(TRACE_SH, [id, clamp_lines(input.get("lines"))]), Some(60)).await
+    let lines = clamp_lines(input.get("lines"));
+    let out = eidolon::shell(sh_cmd(TRACE_SH, [id, `${lines}`]), Some(120)).await?;
+    Ok(render(out, id, lines))
 }
 
 // The tail, as one POSIX sh script: no GNU-only flag in it and no `timeout`
-// anywhere, because this extension is meant for any Unix eidolon runs on. The
-// state root is computed here rather than in Rune because Rune sees no
-// environment.
+// anywhere, because this plugin is meant for any Unix eidolon runs on. The state
+// root is computed here rather than in Rune because Rune sees no environment.
+// It prints `key=value` facts, then a `@@tail` line, then the tail itself; or
+// one `@@missing` line saying why there is nothing to show.
 const TRACE_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 id=$1
 lines=$2
 dir=$root/$id
+models=$(eidolon models 2>/dev/null)
 
 # How a child ended, from the status file `shell_background` writes beside its
 # log: compact JSON, `code` null when a signal ended it.
@@ -66,37 +77,219 @@ ended_of() {
   return 0
 }
 
+# What a journal says a child spent: \"calls tin tout cache_read cache_write low
+# high\", the two dollar figures being \"unpriced\" when the catalog has no price
+# for the model; \"nojournal\" when there is nothing to read.
+spend_of() {
+  journal=$1
+  [ -n \"$journal\" ] && [ -f \"$journal\" ] || { printf 'nojournal'; return 0; }
+  rates=$(printf '%s\\n' \"$models\" | awk -v m=\"$2\" '$1 == m && index($0, \" · \") > 0 { if (match($0, /\\$[0-9.]+\\/[0-9.]+ per M/)) { s = substr($0, RSTART + 1, RLENGTH - 1); split(s, a, \"/\"); printf \"%s %s\", a[1], a[2] + 0 } exit }')
+  eidolon log --json \"$journal\" 2>/dev/null | awk -v rates=\"$rates\" '
+    function num(s, k,    r) {
+      if (match(s, \"\\\"\" k \"\\\":[0-9]+\")) { r = substr(s, RSTART + length(k) + 3, RLENGTH - length(k) - 3); return r + 0 }
+      return 0
+    }
+    /\"kind\":\\{\"(TurnSettled|TurnSpend|ModelSpend)\":/ {
+      ti += num($0, \"input_tokens\"); to += num($0, \"output_tokens\")
+      cr += num($0, \"cache_read_input_tokens\"); cw += num($0, \"cache_creation_input_tokens\")
+    }
+    /\"kind\":\\{\"(TurnPace|TurnSpend)\":/ { calls += num($0, \"calls\") }
+    END {
+      if (rates == \"\") { printf \"%d %d %d %d %d unpriced unpriced\", calls, ti, to, cr, cw; exit }
+      split(rates, p, \" \")
+      low = (ti * p[1] + to * p[2] + cw * p[1]) / 1000000
+      high = low + cr * p[1] / 1000000
+      printf \"%d %d %d %d %d %.6f %.6f\", calls, ti, to, cr, cw, low, high
+    }'
+}
+
 if [ ! -d \"$dir\" ]; then
-  printf 'unknown subagent %s: no state directory %s\\n' \"$id\" \"$dir\"
+  printf '@@missing\\nunknown subagent %s: no state directory %s\\n' \"$id\" \"$dir\"
   exit 0
 fi
 if [ ! -f \"$dir/meta\" ]; then
-  printf 'subagent %s has no meta file in %s, so nothing is recorded about it\\n' \"$id\" \"$dir\"
+  printf '@@missing\\nsubagent %s has no meta file in %s, so nothing is recorded about it\\n' \"$id\" \"$dir\"
   exit 0
 fi
-role=$(sed -n 's/^role=//p' \"$dir/meta\" | head -n 1)
-model=$(sed -n 's/^model=//p' \"$dir/meta\" | head -n 1)
-pid=$(sed -n 's/^pid=//p' \"$dir/meta\" | head -n 1)
-log=$(sed -n 's/^log=//p' \"$dir/meta\" | head -n 1)
-status=$(sed -n 's/^status=//p' \"$dir/meta\" | head -n 1)
-minutes=$(sed -n 's/^deadline_min=//p' \"$dir/meta\" | head -n 1)
-[ -n \"$role\" ] || role=-
-[ -n \"$model\" ] || model='(the config default)'
+get() { sed -n \"s/^$1=//p\" \"$dir/meta\" | head -n 1; }
+kind=$(get kind)
+[ -n \"$kind\" ] || kind=$(get role)
+model=$(get model)
+pid=$(get pid)
+log=$(get log)
+status=$(get status)
 if [ -n \"$pid\" ] && kill -0 \"$pid\" 2>/dev/null; then
   alive=alive
 else
   alive=not-alive
 fi
-printf 'subagent %s: %s, %s\\n' \"$id\" \"$alive\" \"$(ended_of \"$status\")\"
-printf 'model %s (role %s), deadline %s min, pid %s\\n' \"$model\" \"$role\" \"$minutes\" \"$pid\"
+journal=$(sed -n 's/^session: //p' \"$log\" 2>/dev/null | head -n 1)
+printf 'id=%s\\nkind=%s\\nmodel=%s\\nmodel_from=%s\\ndeadline_min=%s\\npid=%s\\n' \"$id\" \"$kind\" \"$model\" \"$(get model_from)\" \"$(get deadline_min)\" \"$pid\"
+printf 'budget_calls=%s\\nbudget_usd_max=%s\\nbudget_usd_min=%s\\n' \"$(get budget_calls)\" \"$(get budget_usd_max)\" \"$(get budget_usd_min)\"
+printf 'alive=%s\\nended=%s\\njournal=%s\\nlog=%s\\n' \"$alive\" \"$(ended_of \"$status\")\" \"$journal\" \"$log\"
+printf 'spend=%s\\n' \"$(spend_of \"$journal\" \"$model\")\"
+printf '@@tail\\n'
 if [ -f \"$log\" ]; then
-  printf 'log: %s -- last %s lines\\n' \"$log\" \"$lines\"
   tail -n \"$lines\" \"$log\"
   printf '\\n'
 else
-  printf 'log: %s (not written yet)\\n' \"$log\"
+  printf '(the log is not written yet)\\n'
 fi
 ";
+
+fn render(out, id, lines) {
+    let pair = out.split("\n@@tail\n").collect::<Vec>();
+    let head = pair[0];
+    let tail = "";
+    if pair.len() > 1 {
+        tail = pair[1];
+    }
+    if head.starts_with("@@missing") {
+        let parts = head.split("\n").collect::<Vec>();
+        let msg = out;
+        if parts.len() > 1 {
+            msg = parts[1];
+        }
+        let shown = msg + "\n";
+        return shown;
+    }
+    let k = #{};
+    for line in head.split("\n") {
+        match line.split_once("=") {
+            Some(p) => {
+                k.insert(p.0, p.1);
+            }
+            None => {}
+        }
+    }
+    let kind = field(k, "kind");
+    if kind == "" {
+        kind = "-";
+    }
+    let model = field(k, "model");
+    if model == "" {
+        model = "(the config default)";
+    }
+    let journal = field(k, "journal");
+    if journal == "" {
+        journal = "not printed yet";
+    }
+    let text = `subagent ${id}: ${field(k, "alive")}, ${field(k, "ended")}\n`;
+    text += `kind ${kind}, model ${model} (${field(k, "model_from")}), deadline ${field(k, "deadline_min")} min, pid ${field(k, "pid")}\n`;
+    text += `budget: ${budget_words(k)}\n`;
+    text += `spend: ${spend_words(k)}\n`;
+    text += `journal: ${journal}\n`;
+    text += `log: ${field(k, "log")} -- last ${lines} lines\n`;
+    text += tail;
+    text
+}
+
+fn field(k, name) {
+    match k.get(name) {
+        Some(v) => `${v}`,
+        None => "",
+    }
+}
+
+// What the journal said about spend, as numbers where there are numbers.
+fn spend(k) {
+    let parts = field(k, "spend").split(" ").collect::<Vec>();
+    let out = #{ known: false, calls: 0, tin: 0, tout: 0, cr: 0, cw: 0, priced: false, low: None, high: None, low_s: "", high_s: "" };
+    if parts.len() < 7 {
+        return out;
+    }
+    out.known = true;
+    out.calls = int(parts[0]);
+    out.tin = int(parts[1]);
+    out.tout = int(parts[2]);
+    out.cr = int(parts[3]);
+    out.cw = int(parts[4]);
+    if parts[5] != "unpriced" {
+        out.priced = true;
+        out.low = Some(number(parts[5]));
+        out.high = Some(number(parts[6]));
+        out.low_s = parts[5];
+        out.high_s = parts[6];
+    }
+    out
+}
+
+// The budget ceiling against the spend: "over" when even the low figure is past
+// usd_max, "maybe" when only the high one is, "" otherwise or when unknowable.
+fn over(k, s) {
+    let max = field(k, "budget_usd_max");
+    if max == "" || !s.priced {
+        return "";
+    }
+    let m = number(max);
+    if s.low.unwrap() > m {
+        return "over";
+    }
+    if s.high.unwrap() > m {
+        return "maybe";
+    }
+    ""
+}
+
+fn budget_words(k) {
+    let parts = [];
+    if field(k, "budget_calls") != "" {
+        parts.push(`calls ${field(k, "budget_calls")} (enforced)`);
+    }
+    if field(k, "budget_usd_max") != "" {
+        parts.push("usd_max $" + field(k, "budget_usd_max") + " (post-hoc)");
+    }
+    if field(k, "budget_usd_min") != "" {
+        parts.push("usd_min $" + field(k, "budget_usd_min") + " (reserve)");
+    }
+    if parts.len() == 0 {
+        return "none";
+    }
+    let out = "";
+    for p in parts {
+        if out != "" {
+            out += ", ";
+        }
+        out += p;
+    }
+    out
+}
+
+fn spend_words(k) {
+    let s = spend(k);
+    if !s.known {
+        return "unknown (no journal readable yet: the child has not printed its session line, or never started a session)";
+    }
+    let words = `${s.calls} calls, ${s.tin} in / ${s.tout} out / ${s.cr} cache-read tokens, `;
+    if !s.priced {
+        words += "dollars unpriced (the catalog has no price for this model)";
+    } else if s.low_s == s.high_s {
+        words += "$" + s.low_s;
+    } else {
+        words += "$" + s.low_s + " to $" + s.high_s + " (cache reads free .. at the input rate)";
+    }
+    let o = over(k, s);
+    if o == "over" {
+        words += "  OVER usd_max $" + field(k, "budget_usd_max");
+    } else if o == "maybe" {
+        words += "  may be over usd_max $" + field(k, "budget_usd_max");
+    }
+    words
+}
+
+fn int(text) {
+    match text.parse::<i64>() {
+        Ok(n) => n,
+        Err(_) => 0,
+    }
+}
+
+fn number(text) {
+    match text.parse::<f64>() {
+        Ok(n) => n,
+        Err(_) => 0.0,
+    }
+}
 
 // An id this tool will accept: the shape `subagent_spawn` mints, and nothing
 // else. Every value reaching a shell is quoted, but a path is not a value, and
@@ -112,7 +305,7 @@ fn checked_id(raw) {
 // Default 40; clamped rather than passed on, since the number reaches `tail`.
 fn clamp_lines(requested) {
     let n = match requested {
-        Some(v) => v,
+        Some(v) => int(`${v}`),
         None => 40,
     };
     if n < 1 {
@@ -132,7 +325,7 @@ fn quote(text) {
 
 // The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
 // than whatever `eidolon::shell` runs, so the same text behaves the same on
-// every Unix this extension is installed on.
+// every Unix this plugin is installed on.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {
