@@ -90,7 +90,7 @@ is "the graph uses it".
 What the interpreter did that **no graph asks for**, and so is not ported:
 
 - guards `contains`, `exists`, `not`, `and`, `or`, `contradicts`; actions `inc`;
-  menu `choose.also` beyond fixed items; `margin`/`visits` per state; deep history
+  deep history
 - standing orders (`jev_order`), warrants (`jev_warrant`, `warrant.py`), the
   decision log for training (`decisions.py`), the System One chooser
   (`systemone.py`), persisted parks surviving a service restart
@@ -147,12 +147,12 @@ reached parks on a person.
 | Python `re` (3 patterns) | `lib/regex.rn`: a small engine (a workflow has no regex) |
 | `jev_run {graph, input}` | `eidolon workflow run <jev dir> <graph> --args '{...}'` |
 | `jev_resume {run, pick}` | `eidolon workflow resume <session> <run> --plugin <jev dir> --answer <n>` |
-| `jev_stop {run}` | cancel the `workflow run` process, or answer a park with `stop` |
-| `jev_runs` | `ls` of the sessions directory, or `eidolon log` on one; every run is a session |
+| `jev_stop {run}` | answer a park with `stop`; or interrupt the `workflow run` process (the journal stays resumable) |
+| `jev_runs` | `eidolon sessions`, and `eidolon log <session>` for one; every run is a session; exit codes 0 completed, 1 parked, 2 failed, 3 refused |
 | `jev_order` | **dropped**: steering is at parks only |
 | `jev_warrant`, warrant blocks | **dropped**: the plugin's verbs are vouched (`eidolon plugins trust jev`); other tools are judged per call |
 | `graphs/<id>.json` | `graphs/<id>.json`, read through `jev_graph`, pinned by sha256 in `workflows/<id>.rn` |
-| `bash` + literal command strings | one tool per fixed command (`jev_os_release`, ...) |
+| `bash` + literal command strings | one tool per fixed command (`jev_os_release`, ... `jev_juice_robots`: eleven) |
 | `wsl.exe --distribution Ubuntu --exec ...` baked into graph text | optional `distro` run argument |
 | the decision log, standing orders, restarts | not ported |
 
@@ -164,13 +164,21 @@ A workflow cannot read a file. `workflows/<graph>.rn` asks the plugin's own
 step, so a resumed run replays the graph it started with. Editing a graph without
 re-pinning fails closed.
 
+The host spills a tool answer over about 8 KB to a file and hands back a preview,
+which is a different text and a different hash. The three triage graphs are
+10 KB, so `jev_graph` hands a graph out in pages (`from: N`, a `jev-page next=M`
+header, at most about 5000 characters a page) and `lib/interp.rn` joins them
+before hashing. This was found by the first triage run, not predicted.
+
 ### The state log
 
 `jev_mark` is a no-op tool whose *input* is the record `{graph, kind, state, step,
 actions}`. The interpreter calls it when a leaf state is entered, a final state is
 entered, a person is asked, and when a run ends without a final state. A run's
 journal keeps every step's input, so a viewer reads the active node as the last
-`jev_mark` step. `jev_graph {graph}` returns the nodes and edges to draw.
+`jev_mark` step (`eidolon log --json <session>`). `jev_graph {graph}` returns the
+nodes and edges to draw: states with path and kind, edges with from, to, kind,
+event and guard type, and where each menu comes from. The shape is in the README.
 
 ## Limits of the host that shape the port
 
@@ -182,27 +190,52 @@ running.
 - A run is **replayed** on resume from its journal, so the program must be
   deterministic. Rune objects have unstable key order; the interpreter sorts keys
   wherever order decides anything (the `transitions` menu is in alphabetical event
-  order, where the Python one was in document order).
+  order, where the Python one was in document order: for `recover` that makes
+  ABORT the first option, where CONTINUE was).
 - **200 steps** per run, a ceiling a plugin can lower and not raise. Every tool
   call, scorer call and mark is a step. `wiki-hop` costs about five steps a hop,
   so its 30-hop budget fits; the step cap is the real bound on a long run, and
   `wall_s` is **not enforced** (no clock).
 - In Rune, a closure that calls a lib function must be reachable from every
   workflow or the unit does not link, and a closure that uses a captured value
-  moves it out on first call. `lib/` therefore has no closures at all: the regex engine is a flat program run
-  with an explicit stack (its first draft was continuation-passing and broke on
-  exactly this).
+  moves it out on first call. `lib/` therefore has no closures at all: the regex
+  engine is a flat program run with an explicit stack (its first draft was
+  continuation-passing and broke on exactly this).
+- A String passed to a tool call is *moved out* of wherever it came from. A
+  template that handed out the graph's own string (`{{event.option.tool}}`) let
+  the first tool call empty that menu item, and the second visit to the state
+  failed with `Cannot read, value is M-...`. `render_value` now returns copies.
+  Also: `x is ()` tests for a *tuple*, not null; use `is_null` or type tests.
 - Integers from `len()` are `u64` and `JSON` integers are `i64`; the interpreter
   normalises before comparing.
 
+## Status
+
+All four phases are built and checked; the README's Verify is what shows it. What
+was run for real, and what stood in, is listed in the final report of the port and
+in "What is mocked" below.
+
+### What is mocked
+
+| piece | in tests | real |
+|---|---|---|
+| the model | `--provider mock`; no graph calls `ask_model` | n/a |
+| `jev_choose`, `jev_entail` | `test/stub_service.py`: rules (first option 0.9, flat, last, down), a word-overlap NLI | the service in the Minerva repo cannot run where this was built (no torch); the tools' request and the interpreter's reading of the answer are what was exercised |
+| `browser_*` for wiki-hop | `test/fake-browser/`: four fake pages, real snapshot format | the browser plugin (no Chromium here) |
+| juice shop | a `python3 -m http.server` on :3001 with a `robots.txt` | the lab |
+| ssh | a shim `ssh` on PATH that logs its argv and runs the command locally | a guest |
+| commands, `grep`, `read`, `curl`, `wsl.exe` | **real** | |
+
 ## Plan
 
-1. **Survey** (this file).
+1. **Survey** (this file). Done.
 2. **Interpreter**: `lib/*.rn`, `tools/mark.rn`, `workflows/selftest.rn` (a pure
    graph and fixed-input checks), then `find-related` end to end against real
-   `grep` and `read`.
+   `grep` and `read`. Done.
 3. **Remaining workflows**: one per graph; the command tools; `distro` and `ssh`
-   options; each graph run under mock to its first tool step or park.
+   options; each graph run under mock to its first tool step or park. Done:
+   every graph ran to its final state, and the park, resume, EMPTY, ERROR/recover
+   and history paths were run too.
 4. **UI exposure and packaging**: `jev_graph`, the README (Prerequisites, Install,
    Verify, Uninstall), `plugin.rn`, a row in the top-level README, and an install
-   from `file://` followed by Verify.
+   from `file://` followed by Verify. Done.

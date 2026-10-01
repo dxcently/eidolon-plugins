@@ -247,14 +247,18 @@ per-graph workflows; both have `--check`.
 
 ## Uninstall
 
+Take the permissions back first (they need the plugin to still be installed),
+then remove it:
+
 ```bash
+eidolon plugins untrust jev
+for v in jev_choose jev_entail; do
+  eidolon plugins revoke $v file:~/.config/eidolon/jev.token
+done
 eidolon plugins uninstall jev
 rm -f ~/.config/eidolon/jev.token
 ```
 
-The vouches and grants stay in `~/.config/eidolon/policy.permits.rn`:
-`eidolon plugins untrust jev` drops the vouches, and
-`eidolon plugins revoke jev_choose file:~/.config/eidolon/jev.token` (and
-`jev_entail`) drops the grants. They are inert once the directory is gone, but
-the store is the record and it should say what is true. The service, if you
-started it, is yours to stop.
+Uninstalling leaves vouches and grants in `~/.config/eidolon/policy.permits.rn`.
+They are inert once the directory is gone, but the store is the record and it
+should say what is true. The service, if you started it, is yours to stop.
