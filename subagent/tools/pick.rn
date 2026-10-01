@@ -125,15 +125,23 @@ pub async fn call(input) {
             None => {}
         }
     }
-    let known = false;
-    let rows = catalog().await?;
-    for r in rows {
-        if r.model == model {
-            known = true;
+    // The catalog only feeds a note here: a pick that names its model is saved
+    // whether or not the listing loads.
+    match catalog().await {
+        Ok(rows) => {
+            let known = false;
+            for r in rows {
+                if r.model == model {
+                    known = true;
+                }
+            }
+            if !known {
+                note += `\nnote: ${model} is not in the \`eidolon models\` catalog; saved anyway, and it will run unpriced`;
+            }
         }
-    }
-    if !known {
-        note += `\nnote: ${model} is not in the \`eidolon models\` catalog; saved anyway, and it will run unpriced`;
+        Err(e) => {
+            note += `\nnote: catalog unavailable: ${e}; saved without checking`;
+        }
     }
     Ok(`saved: kind '${kind}' -> ${model} (${scope}: ${path})${note}`)
 }
