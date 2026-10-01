@@ -66,14 +66,23 @@ is an error, which a graph routes to its `ERROR` event.
   of the repo so `plugins install --all` never picks it up, and its scripts
   refuse to install it anywhere but a temp config.
 - **The jev service**, for `triage-*` and `wiki-hop` (not for `find-related`,
-  `ctf-juice-recon` or `selftest`). It is not part of this plugin: it is Python
-  and torch (`jevlike`, a 169 KB chooser, and `openjev`, a Qwen3.5-4B NLI model of
-  about 9 GB, which only `entails` guards load), `jev/server.py` in the Minerva
-  repository. It answers `POST /call {"method": "choose"|"entail", "args": {...}}`
-  with a bearer token, on `127.0.0.1:8091` (8090 is the browser plugin's; the port
-  is written at the bottom of `tools/choose.rn` and `tools/entail.rn`). Without
-  it, a graph that needs a choice parks on a person and says why; an `entails`
-  guard does not pass.
+  `ctf-juice-recon` or `selftest`). It is a model server the operator runs
+  separately, a documented external service as AGENTS.md allows, so it is not
+  shipped and `plugin.rn` has no `service:` block. It is Python and torch
+  (`jevlike`, a 169 KB chooser, and `openjev`, a Qwen3.5-4B NLI model of about
+  9 GB, which only `entails` guards load), `jev/server.py` in the Minerva
+  repository.
+  - How to start it: Install step 3 below.
+  - Port: `127.0.0.1:8091` (8090 is the browser plugin's); it is written at the
+    bottom of `tools/choose.rn` and `tools/entail.rn`, and the service reads it
+    from `EIDOLON_SERVICE_PORT`.
+  - Token file: `~/.config/eidolon/jev.token`, sent as a bearer token; the two
+    scorer tools are granted exactly that file.
+  - It answers `POST /call {"method": "choose"|"entail", "args": {...}}`.
+  - When it is down: `jev_choose` and `jev_entail` fail with the connection
+    error, a graph that needs a choice parks on a person and says why
+    (`chooser unavailable: ... Connection refused`), and an `entails` guard does
+    not pass. Nothing proceeds on a guess.
 
 ## Install
 

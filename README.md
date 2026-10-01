@@ -44,6 +44,11 @@ order: **Prerequisites**, **Install**, **Verify**, **Uninstall**. See
 └── package.nix    how the flake builds that service
 ```
 
+A service the plugin owns is that Rust crate. The exception is a model server
+the operator runs separately (jev's chooser): it is not shipped, and the plugin's
+README says how to start it, its port and its token file; the plugin's tools
+fail or park with a reason when it is down.
+
 The folder *is* the plugin directory: install it by putting the folder where
 eidolon looks, and every `tools/*.rn` is adopted as `<name>_<verb>`, attributed
 to the plugin in the gate's question and the log's audit lines. A tool file

@@ -41,9 +41,14 @@ bottom of each file.
   `eidolon plugins uninstall <plugin>`.
 - Every tool file is self-contained: `manifest()`, `call()`, and its endpoint.
   Repeat shared helpers in each file rather than sharing them.
-- Anything that has to keep running (a browser, a model) is a service in
-  `service/`, in Rust, built by `package.nix` and added to `flake.nix`, and
-  declared in `plugin.rn`'s `service:` block so `eidolon plugins service`
-  can start it.
+- Anything that has to keep running and that the plugin owns (a browser) is a
+  service in `service/`, in Rust, built by `package.nix` and added to
+  `flake.nix`, and declared in `plugin.rn`'s `service:` block so
+  `eidolon plugins service` can start it.
+  - The one exception is a model server the operator runs separately
+    (`jev`'s Python and torch chooser and NLI scorer). It is not shipped and has
+    no `service:` block. The plugin's README documents how to start it, its
+    port and its token file, and its tools fail or park with a clear reason
+    when it is down.
 - The README has the four sections, as plain commands an agent can run.
 - `cargo clippy --all-targets` is clean and `cargo test` passes.
