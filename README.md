@@ -12,8 +12,9 @@ installs the same way.
 |---|---|---|---|
 | [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back`, `browser_state`; workflows `page_walk`, `page_watch` | `eidolon-browser`, a Rust service driving one headless Chromium | `eidolon plugins install dxcently/eidolon-plugins browser` — see its README for the service |
 | [`subagent/`](subagent/) | `subagent_spawn`, `subagent_pick`, `subagent_plan`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` (models picked per kind, formations, budgets, spend); workflows `fanout`, `door` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` |
+| [`jev/`](jev/) | automation graphs as workflows: `find-related`, `ctf-juice-recon`, `triage-linux`, `triage-wsl`, `triage-botforge`, `wiki-hop`, `selftest`; tools `jev_graph`, `jev_mark`, `jev_choose`, `jev_entail` and eleven one-command recon tools (`jev_os_release`, ... `jev_juice_robots`) | for the chooser graphs, the jev service (Python and torch, not shipped here) | `eidolon plugins install dxcently/eidolon-plugins jev`, then `eidolon plugins trust jev` |
 
-Both need eidolon with the plugin runtime (upstream `master`).
+All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in
 `search` tool, tied to the session's own key. To read a result, use `fetch`,
@@ -37,6 +38,7 @@ order: **Prerequisites**, **Install**, **Verify**, **Uninstall**. See
 ├── plugin.rn      the manifest: name, version, description, claims
 ├── README.md      what it is, and Prerequisites / Install / Verify / Uninstall
 ├── tools/*.rn     one file per tool: the stem is the bare verb, registration is <name>_<verb>
+├── lib/*.rn       Rune compiled in front of the workflows (optional)
 ├── workflows/*.rn programs that drive the plugin's tools (optional)
 ├── service/       a Rust crate, when the tools need something running beside eidolon
 └── package.nix    how the flake builds that service

@@ -1,5 +1,5 @@
 // jev/workflows/selftest.rn -- the interpreter checked against itself, with no
-// model, no network and no tool but `jev_mark`. It runs one small graph (nested
+// model, no network and no tool but jev_mark and jev_graph. It runs one small graph (nested
 // states, a forced pick, `count` and `equals` guards, `assign`/`push`,
 // `entry`/`exit`, `onDone`, a detour and a return through `history`) and checks
 // the regex engine, the template engine and the snapshot parser against fixed
@@ -176,6 +176,41 @@ pub async fn run(args) {
     check(out, bad, "graph refuses a run without its input", stringify(oget_or(missing, "content", "")).contains("needs `who`"), true);
     let unknown = run_graph("{\"id\":\"u\",\"initial\":\"s\",\"states\":{\"s\":{\"always\":[{\"guard\":{\"type\":\"contains\",\"params\":{}},\"target\":\"s\"}]}}}", #{}).await;
     check(out, bad, "graph refuses a guard it does not have", stringify(oget_or(unknown, "content", "")).contains("not supported"), true);
+
+    // the plugin's own graphs: each is read through jev_graph (in pages) and must
+    // load, i.e. use only what the interpreter has
+    for id in ["ctf-juice-recon", "find-related", "triage-botforge", "triage-linux", "triage-wsl", "wiki-hop"] {
+        let loaded = match read_graph(id).await {
+            Ok(t) => match load_graph(t) {
+                Ok(_) => "loads",
+                Err(e) => "refused: " + e,
+            },
+            Err(e) => "unreadable: " + e,
+        };
+        check(out, bad, "graph " + id + " loads", loaded, "loads");
+    }
+    let whole = match read_graph("triage-linux").await {
+        Ok(t) => t,
+        Err(e) => e,
+    };
+    check(out, bad, "a graph over the tool-answer limit arrives whole, in pages", [whole.len() > 8000, whole.ends_with("}\n")], [true, true]);
+    let drawn = match eidolon::tool_call("jev_graph", #{ graph: "triage-linux" }).await {
+        Ok(t) => json::from_string(t),
+        Err(e) => Err(e),
+    };
+    match drawn {
+        Ok(d) => {
+            let has_hist_edge = false;
+            for e in d.edges {
+                if e.from == "recover" && e.get("to") == Some("investigate.hist") {
+                    has_hist_edge = true;
+                }
+            }
+            check(out, bad, "jev_graph draws the states", d.states.len(), 10);
+            check(out, bad, "jev_graph draws a transition into a history state", has_hist_edge, true);
+        }
+        Err(e) => check(out, bad, "jev_graph draws", "error: " + `${e}`, "drawn"),
+    }
 
     let text = "";
     for l in out {
