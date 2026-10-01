@@ -62,6 +62,15 @@ Upstream eidolon without the plugin runtime wants the flat install instead:
 (`browser_open.rn`, …). That layout is in this repo's history before the plugin
 port; the two do not share tool filenames.
 
+## Libraries
+
+[`libs/`](libs/) is the library home: Rune libraries shared **at source**.
+A plugin's manifest may declare one by repo, path, and content sha256 — the
+house pin spelling — and `eidolon plugins install` vendors a verified copy
+into the plugin's own `lib/`, where the run pin covers it like any other
+Rune the plugin ships. See [libs/README.md](libs/README.md); the working
+fixture is [`tests/libsfixture/`](tests/libsfixture/).
+
 ## Building
 
 ```bash

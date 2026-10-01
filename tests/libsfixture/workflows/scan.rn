@@ -1,0 +1,18 @@
+// Calls the vendored engine: `regex_search` is defined in lib/regex.rn,
+// which is not this plugin's file until install vendors it there — the
+// workflow cannot compile against a plugin whose library never landed,
+// and the run's pin covers the bytes that actually ran.
+pub fn workflow() {
+    #{
+        name: "scan",
+        description: "match a line against the vendored regex engine",
+    }
+}
+
+pub async fn run(args) {
+    let hit = regex_search("^COMMAND\\s+PID\\s+USER", args.line)?;
+    Ok(match hit {
+        Some(m) => #{ matched: true, start: m.start, end: m.end },
+        None => #{ matched: false },
+    })
+}
