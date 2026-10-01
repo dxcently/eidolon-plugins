@@ -1,21 +1,7 @@
-// `subagent_pick`: which model a kind of subagent runs on, remembered until it
-// is changed. A *kind* is a free string the orchestrator names ("research",
-// "review", "grind"); nothing here lists kinds or models. The answer is kept in
-// two places, project over global:
-//
-//   <cwd>/.eidolon/subagent-picks.json                                  this project
-//   ${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents/picks.json  everywhere
-//
-// both `{"<kind>": "<provider:model>"}`. `subagent_spawn` and `subagent_plan`
-// read them and never write them; this tool is the only writer.
-//
-// This is also the only tool here that may put a question to a person
-// (`choices_user`), and only when it is called with a kind and no model. When
-// nobody can answer, it returns the same `needs_choice` result spawn and plan
-// return, so the orchestrator decides or asks its operator in its own way.
-//
-// One file, self-contained, like every tool file: the manifest, the call, the
-// POSIX scripts and the helpers it needs.
+// `subagent_pick`: which model a kind of subagent runs on, remembered until changed (README,
+// Picks). It is the only writer of the pick files, and the only tool here that may put a
+// question to a person (`choices_user`), only when called with a kind and no model. When
+// nobody can answer it returns the same `needs_choice` result as spawn and plan.
 
 pub fn manifest() {
     #{
@@ -87,8 +73,7 @@ pub async fn call(input) {
     }
 
     if model == "" {
-        // Nothing named: ask. A dialog that cannot be answered is not an error
-        // here, it is the question handed back to whoever called.
+        // Nothing named: ask. A dialog that cannot be answered is the question handed back, not an error.
         let rows = catalog().await?;
         let options = [];
         for r in rows.iter().take(12) {
@@ -146,13 +131,7 @@ pub async fn call(input) {
     Ok(`saved: kind '${kind}' -> ${model} (${scope}: ${path})${note}`)
 }
 
-// ---------------------------------------------------------------------------
-// Everything below is repeated, whole, in spawn.rn and plan.rn: a tool file
-// shares nothing.
-// ---------------------------------------------------------------------------
-
-// The two pick files, one after the other, with a marker line before each. The
-// project file is relative to the session's working directory, which is where
+// The project file is relative to the session's working directory, which is where
 // `eidolon::shell` runs.
 const PICKS_SH = "g=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents/picks.json
 printf '@@global\\n'
@@ -162,8 +141,7 @@ cat .eidolon/subagent-picks.json 2>/dev/null
 true
 ";
 
-// One pick file, rewritten whole through a temp file and a rename. $1 is the
-// scope, $2 the JSON; prints the absolute path it wrote.
+// One pick file, rewritten whole through a temp file and a rename. $1 is the scope, $2 the JSON; prints the path written.
 const SAVE_SH = "scope=$1
 content=$2
 if [ \"$scope\" = project ]; then
@@ -177,12 +155,10 @@ mv \"$f.tmp.$$\" \"$f\" || exit 1
 printf '%s' \"$f\"
 ";
 
-// The catalog, cheapest first: one tab-separated row per model --
-// key, input $/M, output $/M, context -- with "-" where the listing says
-// nothing. `eidolon models` prints a header per provider (tab separated, no
-// colon in the first word), `[system]` lines and a cache note; the model rows
-// are the ones whose first word is a `provider:model` key and that carry the
-// " · " separator. Unpriced rows sort last, never as free.
+// The catalog, cheapest first: tab-separated key, input $/M, output $/M, context, with "-"
+// where the listing says nothing. `eidolon models` also prints a header per provider,
+// `[system]` lines and a cache note; model rows have a `provider:model` first word and
+// the " · " separator. Unpriced rows sort last, never as free.
 const CATALOG_SH = "m=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
 printf '%s\n' \"$m\" | awk '
 /^\\[/ { next }
@@ -199,8 +175,7 @@ $1 ~ /:/ && index($0, \" · \") > 0 {
 }' | sort | cut -f2-
 ";
 
-// The catalog as rows: #{ model, price, ctx, usd } with `usd` the input plus
-// output $/M, or () when the listing names no price.
+// `usd` is input plus output $/M, or () when the listing names no price.
 async fn catalog() {
     let out = eidolon::shell(sh_eid(CATALOG_SH, []), Some(60)).await?;
     if out.contains("[exit code") {
@@ -230,8 +205,7 @@ async fn catalog() {
     Ok(rows)
 }
 
-// A successful result, not a refusal: the model to use is the caller's to
-// decide (or its operator's), so say what is needed and how to continue.
+// A successful result, not a refusal: the model is the caller's (or its operator's) to decide.
 fn needs_choice(kind, rows, tool, input) {
     let options = [];
     for r in rows.iter().take(12) {
@@ -249,8 +223,7 @@ fn needs_choice(kind, rows, tool, input) {
     json::to_string(out).unwrap_or("{\"status\":\"needs_choice\"}")
 }
 
-// The two pick files as #{ global: #{..}, project: #{..} }. A file that is not
-// a JSON object is refused rather than overwritten.
+// A file that is not a JSON object is refused rather than overwritten.
 async fn read_picks() {
     let out = eidolon::shell(sh_cmd(PICKS_SH, []), Some(30)).await?;
     let body = out;
@@ -312,8 +285,7 @@ fn listing(picks) {
     out
 }
 
-// A kind, trimmed and checked. "*" is the listing and is let through only when
-// the caller says so.
+// "*" is the listing and is let through only when the caller says so.
 fn checked_kind(raw, star) {
     let kind = raw.trim();
     if kind == "" {
@@ -336,7 +308,6 @@ fn checked_kind(raw, star) {
     Ok(kind)
 }
 
-// A field that may be absent, as the text it is.
 fn text_of(value) {
     match value {
         Some(v) => `${v}`,
@@ -351,19 +322,15 @@ fn number(text) {
     }
 }
 
-// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
 fn quote(text) {
     let s = `${text}`;
     `'${s.replace("'", "'\\''")}'`
 }
 
-// The eidolon binary, found the way every tool of this plugin finds it, and
-// prepended to the scripts that run it. `eidolon` is not on PATH when the
-// session was started without a login shell (a Windows `wsl.exe -e`, a service,
-// cron), so: $EIDOLON_BIN if set -- and then it is the only candidate, a wrong
-// one is an error rather than a quiet fall-through -- else `eidolon` on PATH,
-// else $HOME/.local/bin/eidolon. None found: exit 127 and say how to fix it.
-// Repeated in list.rn, trace.rn, pick.rn, plan.rn and spawn.rn.
+// The eidolon binary: $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
+// $HOME/.local/bin/eidolon, each only if it answers `--version`: without a login shell (a
+// Windows `wsl.exe -e`, a service, cron) PATH can hold a stub that is executable and runs
+// nothing (Minerva's does). None works: exit 127 and say how to fix it.
 const EID_SH = "eid=
 eid_ok() { [ -f \"$1\" ] && [ -x \"$1\" ] && \"$1\" --version >/dev/null 2>&1; }
 if [ -n \"${EIDOLON_BIN:-}\" ]; then
@@ -386,8 +353,7 @@ if [ -z \"$eid\" ]; then
 fi
 ";
 
-// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
-// than whatever `eidolon::shell` runs.
+// POSIX sh rather than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {
@@ -396,7 +362,6 @@ fn sh_cmd(script, args) {
     cmd
 }
 
-// `sh_cmd` with the eidolon lookup in front: `$eid` is the binary.
 fn sh_eid(script, args) {
     sh_cmd(EID_SH + script, args)
 }

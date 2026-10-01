@@ -1,17 +1,10 @@
-// `subagent_trace`: the tail of one child's log, plus whether it is still
-// running, how it ended, and what it has spent. The log is the only window on a
-// child mid-run -- no state of its turns is readable from outside, on purpose --
-// so this is what a steer is judged by: send it, then read what the child did
-// with it. A child that needs a choice ends with it in its final text; this is
-// where the orchestrator reads it.
+// `subagent_trace`: the tail of one child's log, plus whether it is still running, how it
+// ended and what it has spent. The log is the only window on a child mid-run, so it is what
+// a steer is judged by, and where a child's question (its final text) is read.
 //
-// Spend is read from the child's journal exactly as `subagent_list` reads it
-// (see the head of that file for the records and for what is known when): calls
-// and dollars as a low-high range, "unpriced" for a model the catalog does not
-// price, "unknown" for a child with no journal yet -- never $0.
-//
-// One file, self-contained, like every tool file: the manifest, the call, the
-// POSIX script and the helpers it needs.
+// Spend is read from the journal as `subagent_list` reads it: calls and dollars as a range,
+// "unpriced" for a model the catalog does not price, "unknown" for a child with no journal
+// yet -- never $0.
 pub fn manifest() {
     #{
         name: "subagent_trace",
@@ -48,11 +41,9 @@ pub async fn call(input) {
     Ok(render(out, id, lines))
 }
 
-// The tail, as one POSIX sh script: no GNU-only flag in it and no `timeout`
-// anywhere, because this plugin is meant for any Unix eidolon runs on. The state
-// root is computed here rather than in Rune because Rune sees no environment.
-// It prints `key=value` facts, then a `@@tail` line, then the tail itself; or
-// one `@@missing` line saying why there is nothing to show.
+// The tail, as one POSIX sh script (no GNU-only flags, no `timeout`; the state root is
+// computed there because Rune sees no environment). It prints `key=value` facts, a `@@tail`
+// line, then the tail; or one `@@missing` line saying why there is nothing to show.
 const TRACE_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 id=$1
 lines=$2
@@ -194,7 +185,6 @@ fn field(k, name) {
     }
 }
 
-// What the journal said about spend, as numbers where there are numbers.
 fn spend(k) {
     let parts = field(k, "spend").split(" ").collect::<Vec>();
     let out = #{ known: false, calls: 0, tin: 0, tout: 0, cr: 0, cw: 0, priced: false, low: None, high: None, low_s: "", high_s: "" };
@@ -217,8 +207,7 @@ fn spend(k) {
     out
 }
 
-// The budget ceiling against the spend: "over" when even the low figure is past
-// usd_max, "maybe" when only the high one is, "" otherwise or when unknowable.
+// "over" when even the low figure is past usd_max, "maybe" when only the high one is, "" otherwise or when unknowable.
 fn over(k, s) {
     let max = field(k, "budget_usd_max");
     if max == "" || !s.priced {
@@ -294,9 +283,7 @@ fn number(text) {
     }
 }
 
-// An id this tool will accept: the shape `subagent_spawn` mints, and nothing
-// else. Every value reaching a shell is quoted, but a path is not a value, and
-// this is what keeps an id from being one.
+// The id becomes a path, and quoting does not protect a path.
 fn checked_id(raw) {
     let id = `${raw}`;
     if !id.starts_with("sa-") || id.contains("/") || id.contains(".") {
@@ -305,7 +292,7 @@ fn checked_id(raw) {
     id
 }
 
-// Default 40; clamped rather than passed on, since the number reaches `tail`.
+// Default 40; clamped, since the number reaches `tail`.
 fn clamp_lines(requested) {
     let n = match requested {
         Some(v) => int(`${v}`),
@@ -320,19 +307,15 @@ fn clamp_lines(requested) {
     }
 }
 
-// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
 fn quote(text) {
     let s = `${text}`;
     `'${s.replace("'", "'\\''")}'`
 }
 
-// The eidolon binary, found the way every tool of this plugin finds it, and
-// prepended to the scripts that run it. `eidolon` is not on PATH when the
-// session was started without a login shell (a Windows `wsl.exe -e`, a service,
-// cron), so: $EIDOLON_BIN if set -- and then it is the only candidate, a wrong
-// one is an error rather than a quiet fall-through -- else `eidolon` on PATH,
-// else $HOME/.local/bin/eidolon. None found: exit 127 and say how to fix it.
-// Repeated in list.rn, trace.rn, pick.rn, plan.rn and spawn.rn.
+// The eidolon binary: $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
+// $HOME/.local/bin/eidolon, each only if it answers `--version`: without a login shell (a
+// Windows `wsl.exe -e`, a service, cron) PATH can hold a stub that is executable and runs
+// nothing (Minerva's does). None works: exit 127 and say how to fix it.
 const EID_SH = "eid=
 eid_ok() { [ -f \"$1\" ] && [ -x \"$1\" ] && \"$1\" --version >/dev/null 2>&1; }
 if [ -n \"${EIDOLON_BIN:-}\" ]; then
@@ -355,9 +338,7 @@ if [ -z \"$eid\" ]; then
 fi
 ";
 
-// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
-// than whatever `eidolon::shell` runs, so the same text behaves the same on
-// every Unix this plugin is installed on.
+// POSIX sh rather than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {
@@ -366,7 +347,6 @@ fn sh_cmd(script, args) {
     cmd
 }
 
-// `sh_cmd` with the eidolon lookup in front: `$eid` is the binary.
 fn sh_eid(script, args) {
     sh_cmd(EID_SH + script, args)
 }

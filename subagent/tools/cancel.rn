@@ -1,14 +1,5 @@
-// `subagent_cancel`: stop one child, and everything it started. The signal goes
-// to the child's whole process group — `shell_background` starts it under
-// `setsid`, so that group is the child's tree and nothing else — which is why a
-// cancel is one signal rather than a hunt for descendants.
-//
-// The state directory is left in place: it is the record of what happened, and
-// `subagent_trace` reads it afterwards. A cancelled child's journal is still
-// there too, which is what `eidolon resume` picks up if the work is worth
-// continuing by hand.
-//
-// One file, self-contained, like every tool file.
+// `subagent_cancel`: one signal to the child's whole process group (`shell_background`
+// starts it under `setsid`, so the group is the child's tree and nothing else).
 pub fn manifest() {
     #{
         name: "subagent_cancel",
@@ -36,10 +27,7 @@ pub async fn call(input) {
     eidolon::shell(sh_cmd(CANCEL_SH, [id]), Some(60)).await
 }
 
-// The signal, as one POSIX sh script. The wait is a `sleep 1` in a loop rather
-// than a fractional sleep, and there is no `timeout` anywhere: this extension is
-// meant for any Unix eidolon runs on, and both `timeout` and `sleep 0.1` are
-// GNU-flavoured.
+// No `timeout` and no fractional sleep: both are GNU-flavoured, and this runs on any Unix.
 const CANCEL_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 id=$1
 dir=$root/$id
@@ -70,9 +58,7 @@ else
 fi
 ";
 
-// An id this tool will accept: the shape `subagent_spawn` mints, and nothing
-// else. Every value reaching a shell is quoted, but a path is not a value, and
-// this is what keeps an id from being one.
+// The id becomes a path, and quoting does not protect a path.
 fn checked_id(raw) {
     let id = `${raw}`;
     if !id.starts_with("sa-") || id.contains("/") || id.contains(".") {
@@ -81,15 +67,12 @@ fn checked_id(raw) {
     id
 }
 
-// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
 fn quote(text) {
     let s = `${text}`;
     `'${s.replace("'", "'\\''")}'`
 }
 
-// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
-// than whatever `eidolon::shell` runs, so the same text behaves the same on
-// every Unix this extension is installed on.
+// POSIX sh rather than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {

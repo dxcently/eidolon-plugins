@@ -1,15 +1,6 @@
-// The manifest upstream eidolon's plugin system reads at adoption.
-//
-// The directory's contents are authoritative for *what exists*: discovery
-// compiles this file for the plugin's identity, and reads `tools/` for the
-// verbs. A file's STEM is the bare verb and its registered name is the
-// namespaced one — `tools/spawn.rn` is adopted as `subagent_spawn` — so the
-// `tools` claim below names stems, sorted, and the tool files keep declaring
-// the namespaced `name:` they are registered under. `workflows` names the stems
-// of `workflows/*.rn` the same way.
-//
-// `name` must equal this directory's name (two identities for one plugin is
-// how a listing and a log come to disagree).
+// `tools` and `workflows` name the stems of tools/*.rn and workflows/*.rn, sorted; a tool file
+// keeps declaring the namespaced `name:` it is registered under (`tools/spawn.rn` is
+// `subagent_spawn`). `name` must equal this directory's name.
 
 pub fn manifest() {
     #{

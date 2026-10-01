@@ -1,22 +1,13 @@
 #!/bin/sh
 # subagent-door '<args JSON>' [workflow run flags...]
 #
-# The door for an orchestrator outside eidolon, by plugin *name*: `eidolon
-# workflow run` wants the plugin directory, and this finds it, finds eidolon,
-# and execs
-#
+# The door by plugin name: finds the plugin directory and eidolon, then execs
 #   eidolon workflow run <plugin dir> door --args '<args JSON>'
+# The line back and the exit code are eidolon's; anything after the JSON goes to
+# `workflow run` (`--yolo`). POSIX sh.
 #
-# Args are the door's: {"tool":"spawn","input":{...}} or {"tool":"schema"}.
-# The line that comes back, and its exit code (0 completed, 1 parked, 2 failed,
-# 3 refused), are eidolon's. Anything after the JSON is passed on (`--yolo`).
-#
-#   wsl.exe -d Ubuntu -e ~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'
-#
-# POSIX sh. Plugin dir: ${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent.
-# eidolon: $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
-# $HOME/.local/bin/eidolon -- each only if it is an executable file that answers
-# `--version`. The same lookup as the plugin's tools make.
+# eidolon is $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
+# $HOME/.local/bin/eidolon, each only if it is an executable that answers `--version`.
 
 if [ $# -lt 1 ]; then
   echo "usage: subagent-door '{\"tool\":\"schema\"}'   (the door's args JSON)" >&2

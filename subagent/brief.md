@@ -1,29 +1,14 @@
 # The brief a spawned subagent is given
 
-The brief is composed by [`tools/spawn.rn`](tools/spawn.rn)
-from the block below — the tool file carries this text whole, because upstream
-eidolon compiles each tool file on its own and reads nothing of this directory
-at spawn time. Keep the two in step.
+Composed by [`tools/spawn.rn`](tools/spawn.rn) from the block below. The tool carries the
+text whole (a tool file compiles on its own and reads nothing of this directory), so keep
+the two in step.
 
-Its **first line is `You are subagent {id}.`** and that line is load-bearing:
-it is what a roster listing shows as the child's title, so a human running
-`eidolon peers` — or a session reading `peers` — can tell one child from
-another and from the session that started it. (The four tools here do not rely
-on it: a headless `eidolon run` registers before it is asked anything, so the
-child's title stays empty. `subagent_list` and `subagent_steer` match on the
-journal path instead, which is exact. See `tools/list.rn`.)
-
-Four placeholders are filled in: `{id}`, `{parent}`, `{task}` and `{deadline}`.
-**`{cwd}` is not**: it becomes the words "the parent's working directory", since
-the child runs in the parent's directory and the path it would have printed is
-the one it already runs in. Nor is the deadline the child's own good manners —
-it is a `sleep` in a subshell that signals the child's process group, in
-`tools/spawn.rn` — and the journal path is not in the brief at all: it
-lands in the child's own log, where the parent reads it for `eidolon resume`.
-
-The lifecycle is the point of it: a subagent reports, stops, and is resumed
-from its journal if the parent wants more — so the brief has to make the
-report addressable and the journal findable.
+The first line, `You are subagent {id}.`, is what a roster shows as the child's title, so a
+human running `eidolon peers` can tell children apart. A headless `eidolon run` registers
+before it is asked anything, so its title stays empty: `subagent_list` and `subagent_steer`
+match on the journal path instead. The journal path is not in the brief; it lands in the
+child's own log.
 
 | placeholder | what goes in |
 |---|---|

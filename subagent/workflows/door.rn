@@ -1,33 +1,12 @@
-// subagent/workflows/door.rn -- the plugin's door for an orchestrator outside
-// eidolon (Claude Code, Codex CLI, aoide): one command in, one JSON line out.
+// The door for an orchestrator outside eidolon (README, "From Claude Code, Codex or aoide"):
+// `{tool, input}` in, the tool's answer back unchanged as the run's report, `needs_choice`
+// and `plan` payloads included. No dialog is opened on this path, and anything outside the
+// fixed set of seven tools and `schema` is refused, so the door cannot reach another tool.
+// The plugin must be trusted first, or the gate asks about every verb.
 //
-//   eidolon workflow run <plugin dir> door --args '{"tool":"spawn","input":{...}}'
-//
-// `workflow run` takes the plugin DIRECTORY, not its name (upstream has no name
-// lookup): ${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent. The
-// wrapper bin/subagent-door resolves that and the eidolon binary:
-//   subagent-door '{"tool":"spawn","input":{...}}'
-//
-// Args: `tool` is one of spawn, pick, plan, list, trace, steer, cancel, or
-// `schema`; `input` is that tool's input (see `schema`). The tool is called as
-// `subagent_<tool>` through the one gate, and its answer comes back unchanged
-// as the run's report -- including the `needs_choice` and `plan` payloads,
-// which are the caller's to decide on or to put in front of its operator. No
-// dialog is opened anywhere on this path. Anything outside that fixed set is
-// refused, so the door cannot be used to reach another tool.
-//
-// The exit code is the workflow door's: 0 completed, 1 parked, 2 failed (the
-// tool refused or errored; the `reason` says why), 3 refused (nothing ran).
-// The plugin must be trusted first (`eidolon plugins trust subagent`), or the
-// gate asks about every verb.
-//
-// `schema`: what each tool takes. A workflow cannot read a tool's own manifest
-// -- `tool_search` would return it, but a result over 8000 characters is
-// spilled to a file and cut to its head, and these seven manifests together
-// are longer than that. So the summary is embedded below. It is a summary and
-// it can drift: the full manifests are `eidolon tools` (one JSON object per
-// tool; grep for subagent_), which is always current. Keep SCHEMA in step with
-// the tool files when an input changes.
+// `schema` is embedded because a workflow cannot read a tool's manifest: the one built-in
+// that returns them spills past 8000 characters, and the seven are longer. It is a summary
+// and can drift; `eidolon tools` is always current. Keep SCHEMA in step with the tool files.
 
 pub fn workflow() {
     #{
@@ -76,8 +55,7 @@ pub async fn run(args) {
     }
 }
 
-// The seven tools' inputs, summarised. `needs_choice` and `plan` are results a
-// tool can return successfully; the caller reads `status` to tell.
+// The seven tools' inputs, summarised. `needs_choice` and `plan` are successful results; the caller reads `status`.
 const SCHEMA = "{\"tools\":{
 \"spawn\":{\"does\":\"start a child eidolon session in the background; returns id, pid, log. Or, when no model is picked for the kind, {status:needs_choice, kind, question, options:[{model,price,ctx}], retry:{tool,input}} and nothing is started.\",
  \"input\":{\"task\":\"string, required\",\"kind\":\"string, default 'default': picks are remembered per kind\",\"model\":\"string, provider:model, one-off, wins over picks\",\"budget\":\"{calls:int (enforced live), usd_max:number (checked after), usd_min:number (reserve)}\",\"tools\":\"[string], advisory\",\"deadline_min\":\"int 1..120, default 15\",\"yolo\":\"bool, default false (the child stalls on flagged tools without it)\"}},

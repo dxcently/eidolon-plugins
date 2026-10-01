@@ -189,10 +189,8 @@ eidolon workflow run ~/.config/eidolon/plugins/subagent fanout --args '<the plan
 eidolon workflow resume --plugin <plugin dir> --answer stop <session> <run>   # for a parked run
 ```
 
-(`workflow run`'s first argument is the plugin **directory**, not its name: a bare `subagent`
-is refused, and upstream has no name lookup. The installed directory is
-`${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent`; or use a checkout.) Add `parallel`, `poll_s` and `max_polls` to the
-args to tune the waiting. The report has one block per child (state, spend, the
+(`workflow run` takes the plugin **directory**, not its name; see the door section.) Add
+`parallel`, `poll_s` and `max_polls` to the args to tune the waiting. The report has one block per child (state, spend, the
 tail of its log, which is where its report or its question is) and a note for
 every threshold that acted.
 
@@ -379,23 +377,6 @@ the earlier yes. A service still running refuses; this plugin declares none.
 The children already spawned are untouched, and so are their state directories
 and journals: `kill` them, or `eidolon resume` them, by hand. Your picks
 (`picks.json`, `.eidolon/subagent-picks.json`) and formations stay too.
-
-## What the old fork had, and what is here
-
-The Minerva fork's subagent feature was `Shim::summon` inside the harness — a
-subagent there was a chat in the harness's own process, watched through
-`/api/subagent*` routes. This is the same lifecycle as Rune tools on upstream
-eidolon, where a subagent is a process of its own.
-
-| old fork | here |
-|---|---|
-| spawn (`Shim::summon`) | `subagent_spawn`: a child `eidolon run`, under `shell_background`, with a brief |
-| trace (live turns of the child) | `subagent_trace`: the tail of the child's log — the child's output, not its transcript — plus its spend |
-| steer (a message mid-turn) | `subagent_steer`: `send` with wake, read by the child at its next step |
-| cancel | `subagent_cancel`: SIGTERM to the child's process group, SIGKILL after 5 s |
-| list | `subagent_list` |
-| role tiers, "the parent's own model by default" | picks per kind (`subagent_pick`): no tiers and no table in any file; a kind with no pick is a question back to the orchestrator, never a silent default |
-| the web UI's subagent routes | not in this repo: no service, no routes, nothing to declare. The reading surface is these tools, `eidolon peers`, and the child's own session (`eidolon logs`, `eidolon resume`) |
 
 ## Limits
 

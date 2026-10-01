@@ -1,8 +1,5 @@
-// subagent/lib/util.rn -- helpers the plugin's workflows share. Upstream compiles
-// every `lib/*.rn` in front of a workflow (and only a workflow: a tool file is
-// compiled alone, so tools/ keeps its own copies), in one unit where a bare
-// name resolves across files. `fanout.rn` and `door.rn` each have their own
-// `workflow()` and `run()`, so neither belongs here.
+// Helpers for the workflows. Upstream compiles `lib/` in front of a workflow only, so
+// tool files carry their own copies.
 
 fn fatal(msg) {
     #{ content: msg, is_error: true }
@@ -12,8 +9,7 @@ fn money(n) {
     "$" + `${n}`
 }
 
-// Text of a field that may be absent or JSON null (the unit value, which has
-// no text form of its own).
+// JSON null is the unit value, which has no text form of its own.
 fn text(value) {
     match value {
         Some(v) => {
@@ -27,7 +23,6 @@ fn text(value) {
     }
 }
 
-// A number out of a JSON value, or None for null or text that is not one.
 fn as_number(v) {
     if json::to_string(v).unwrap_or("null") == "null" {
         return None;

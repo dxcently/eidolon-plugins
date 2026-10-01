@@ -1,33 +1,13 @@
-// `subagent_plan`: turn a named formation into a plan -- which roles, how many
-// of each, on which models, under which budgets -- and hand it back for the
-// operator to approve. It spawns nothing and never opens a dialog.
+// `subagent_plan`: turn a named formation (README, Formations) into a plan -- roles, counts,
+// models, budgets -- for the operator to approve. It spawns nothing and never opens a dialog.
 //
-// A formation is a JSON file:
+// The file is looked for in the state directory's formations/, then the installed plugin's
+// formations/, then the embedded SOLO and FANOUT. A tool script cannot ask where its own
+// directory is, so the second is a guess at where `plugins install` put the plugin, and the
+// third keeps `solo` and `fanout` working when the guess is wrong.
 //
-//   {"name": "fanout",
-//    "roles": [{"role": "scout", "count": 3, "kind": "research",
-//               "tools": ["read", "grep", "bash"],
-//               "budget": {"calls": 40, "usd_max": 0.5, "usd_min": 0.1},
-//               "floor": null}],
-//    "thresholds": [{"at": 0.7, "action": "step_down"},
-//                   {"at": 0.9, "action": "ask"},
-//                   {"at": 1.0, "action": "stop"}]}
-//
-// found, first hit wins, in:
-//   1. ${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents/formations/<name>.json  (yours)
-//   2. ${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent/formations/<name>.json  (shipped)
-//   3. the two shipped ones, embedded below as SOLO and FANOUT
-// A tool script cannot ask where its own directory is, so (2) is a guess at
-// where `eidolon plugins install` puts the plugin and (3) is the fallback that
-// keeps `solo` and `fanout` working when the guess is wrong. Keep the embedded
-// copies and ../formations/*.json in step.
-//
-// Each role's model comes from the picks, exactly as `subagent_spawn` resolves
-// it (project pick for the role's kind, then global). A kind with no pick makes
-// the whole answer `needs_choice` for that kind: nothing is guessed.
-//
-// One file, self-contained, like every tool file: the manifest, the call, the
-// POSIX scripts and the helpers it needs.
+// Each role's model resolves as in `subagent_spawn`; a kind with no pick makes the whole
+// answer `needs_choice` for that kind.
 
 pub fn manifest() {
     #{
@@ -75,7 +55,6 @@ pub async fn call(input) {
         return Err("task is required");
     }
 
-    // The formation, and where it came from.
     let found = eidolon::shell(sh_cmd(FORM_SH, [name]), Some(30)).await?;
     let source = "";
     let body = "";
@@ -240,7 +219,6 @@ pub async fn call(input) {
         }
     }
 
-    // The total the thresholds are measured against.
     let total = None;
     let total_from = "none: thresholds are inactive";
     match input.get("budget") {
@@ -326,8 +304,7 @@ const SOLO = "{\"name\":\"solo\",\"roles\":[{\"role\":\"worker\",\"count\":1,\"k
 const FANOUT = "{\"name\":\"fanout\",\"roles\":[{\"role\":\"scout\",\"count\":3,\"kind\":\"research\",\"tools\":[\"read\",\"grep\",\"bash\"],\"budget\":{\"calls\":40,\"usd_max\":0.5,\"usd_min\":0.1},\"floor\":null}],\"thresholds\":[{\"at\":0.7,\"action\":\"step_down\"},{\"at\":0.9,\"action\":\"ask\"},{\"at\":1.0,\"action\":\"stop\"}]}
 ";
 
-// The formation file for $1: yours first, then the plugin's. Prints a marker
-// line naming which, then the file; or `@@none`.
+// The formation file for $1, the state directory's first: a marker line naming which, then the file; or `@@none`.
 const FORM_SH = "name=$1
 mine=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents/formations/$name.json
 shipped=${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/plugins/subagent/formations/$name.json
@@ -342,9 +319,8 @@ else
 fi
 ";
 
-// The two pick files, one after the other, with a marker line before each. The
-// project file is relative to the session's working directory, which is where
-// `eidolon::shell` runs. Repeated in pick.rn and spawn.rn.
+// The project file is relative to the session's working directory, which is where
+// `eidolon::shell` runs.
 const PICKS_SH = "g=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents/picks.json
 printf '@@global\\n'
 cat \"$g\" 2>/dev/null
@@ -353,12 +329,10 @@ cat .eidolon/subagent-picks.json 2>/dev/null
 true
 ";
 
-// The catalog, cheapest first: one tab-separated row per model --
-// key, input $/M, output $/M, context -- with "-" where the listing says
-// nothing. `eidolon models` prints a header per provider (tab separated, no
-// colon in the first word), `[system]` lines and a cache note; the model rows
-// are the ones whose first word is a `provider:model` key and that carry the
-// " · " separator. Unpriced rows sort last, never as free.
+// The catalog, cheapest first: tab-separated key, input $/M, output $/M, context, with "-"
+// where the listing says nothing. `eidolon models` also prints a header per provider,
+// `[system]` lines and a cache note; model rows have a `provider:model` first word and
+// the " · " separator. Unpriced rows sort last, never as free.
 const CATALOG_SH = "m=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
 printf '%s\n' \"$m\" | awk '
 /^\\[/ { next }
@@ -375,8 +349,7 @@ $1 ~ /:/ && index($0, \" · \") > 0 {
 }' | sort | cut -f2-
 ";
 
-// The catalog as rows: #{ model, price, ctx, usd } with `usd` the input plus
-// output $/M, or () when the listing names no price.
+// `usd` is input plus output $/M, or () when the listing names no price.
 async fn catalog() {
     let out = eidolon::shell(sh_eid(CATALOG_SH, []), Some(60)).await?;
     if out.contains("[exit code") {
@@ -406,9 +379,7 @@ async fn catalog() {
     Ok(rows)
 }
 
-// A successful result, not a refusal: the model to use is the caller's to
-// decide (or its operator's), so say what is needed and how to continue. The
-// first unresolved kind is the one asked about; all of them are listed.
+// A successful result, not a refusal. The first unresolved kind is the one asked about; all are listed.
 fn needs_choice(kinds, rows, input) {
     let kind = kinds[0];
     let options = [];
@@ -428,8 +399,7 @@ fn needs_choice(kinds, rows, input) {
     json::to_string(out).unwrap_or("{\"status\":\"needs_choice\"}")
 }
 
-// The two pick files as #{ global: #{..}, project: #{..} }. A file that is not
-// a JSON object is refused rather than skipped.
+// A file that is not a JSON object is refused rather than skipped.
 async fn read_picks() {
     let out = eidolon::shell(sh_cmd(PICKS_SH, []), Some(30)).await?;
     let global = "";
@@ -465,7 +435,6 @@ fn parse_picks(text, what) {
     }
 }
 
-// A kind: letters, digits, '-', '_', '.', at most 64.
 fn checked_kind(raw) {
     let kind = raw.trim();
     if kind == "" || kind == "*" {
@@ -482,7 +451,6 @@ fn checked_kind(raw) {
     Ok(kind)
 }
 
-// A field that may be absent, as the text it is.
 fn text_of(value) {
     match value {
         Some(v) => `${v}`,
@@ -504,19 +472,15 @@ fn number(text) {
     }
 }
 
-// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
 fn quote(text) {
     let s = `${text}`;
     `'${s.replace("'", "'\\''")}'`
 }
 
-// The eidolon binary, found the way every tool of this plugin finds it, and
-// prepended to the scripts that run it. `eidolon` is not on PATH when the
-// session was started without a login shell (a Windows `wsl.exe -e`, a service,
-// cron), so: $EIDOLON_BIN if set -- and then it is the only candidate, a wrong
-// one is an error rather than a quiet fall-through -- else `eidolon` on PATH,
-// else $HOME/.local/bin/eidolon. None found: exit 127 and say how to fix it.
-// Repeated in list.rn, trace.rn, pick.rn, plan.rn and spawn.rn.
+// The eidolon binary: $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
+// $HOME/.local/bin/eidolon, each only if it answers `--version`: without a login shell (a
+// Windows `wsl.exe -e`, a service, cron) PATH can hold a stub that is executable and runs
+// nothing (Minerva's does). None works: exit 127 and say how to fix it.
 const EID_SH = "eid=
 eid_ok() { [ -f \"$1\" ] && [ -x \"$1\" ] && \"$1\" --version >/dev/null 2>&1; }
 if [ -n \"${EIDOLON_BIN:-}\" ]; then
@@ -539,8 +503,7 @@ if [ -z \"$eid\" ]; then
 fi
 ";
 
-// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
-// than whatever `eidolon::shell` runs.
+// POSIX sh rather than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {
@@ -549,7 +512,6 @@ fn sh_cmd(script, args) {
     cmd
 }
 
-// `sh_cmd` with the eidolon lookup in front: `$eid` is the binary.
 fn sh_eid(script, args) {
     sh_cmd(EID_SH + script, args)
 }

@@ -1,40 +1,19 @@
-// subagent/workflows/fanout.rn -- run a plan from `subagent_plan`: spawn each
-// role's children, follow them, step the model down or stop when finished
-// children's spend crosses the formation's thresholds, and report what came
-// back.
+// Run a plan from `subagent_plan` (README, "Fan-out workflow"): spawn each role's children,
+// follow them, step the model down or stop when finished children's spend crosses the
+// thresholds, and report what came back.
 //
-// Args: the plan `subagent_plan` returned (its `roles`, `thresholds`, `ladder`,
-// `total_usd` and `task`), plus three optional knobs:
+// Args: the plan (`roles`, `thresholds`, `ladder`, `total_usd`, `task`) and three knobs:
 //   parallel   most children running at once, 1-10, default 3
 //   poll_s     seconds each `subagent_list` waits before looking, 1-60, default 30
-//   max_polls  how many such waits before giving up on running children, 1-120,
-//              default 60
+//   max_polls  waits before giving up on running children, 1-120, default 60
 //
-// Every effect is a dispatched tool call (`subagent_spawn`, `subagent_list`,
-// `subagent_trace`), so the gate sees each one and a resumed run replays them.
-// The program is deterministic given those answers: it reads no clock, and it
-// sleeps only through `subagent_list`'s `wait_s`.
+// Every effect is a dispatched tool call, so the gate sees each one and a resumed run
+// replays them; the program reads no clock and sleeps only through `subagent_list`'s `wait_s`.
 //
-// What the thresholds see, and when. Spend is read from finished children's
-// journals, in dollars, as the HIGH end of the range `subagent_list` reports
-// (cache reads priced at the input rate, since the catalog lists no cache
-// rate): this over-counts rather than under-counts. A child's spend is known
-// only after a turn of it has ended, so a child still running counts as zero,
-// and a finished child whose model is unpriced counts as unknown, not zero --
-// it is named in the report and does not move the ratio. The spend of these
-// children is NOT counted against `workflow run --budget-spend`: that counts
-// the run's own session, and the children are other sessions.
-//
-// Thresholds, in order of `at` (ratio = known spend / total_usd):
-//   step_down  each crossed step_down threshold moves a role one rung down the
-//              ladder (the next strictly cheaper priced model), never below the
-//              role's `floor`, and not for a role that has not yet spent its
-//              `usd_min` -- the reserve: a role may always spend at least that
-//              much before it is stepped down
-//   ask        parks the run with the question; answer "stop" to stop
-//              spawning, anything else to go on. Asked once per threshold.
-//   stop       stops spawning. Running children are left running and named.
-// With no total (the plan has no `total_usd`) the thresholds are inactive.
+// Ratio = known spend / total_usd, spend being the HIGH end of the range (over-counts rather
+// than under-counts). A running child counts as zero, a finished child on an unpriced model
+// as unknown: named in the report, not moving the ratio. With no total the thresholds are
+// inactive. `step_down` skips a role that has not yet spent its `usd_min` reserve.
 
 pub fn workflow() {
     #{
@@ -114,18 +93,15 @@ pub async fn run(args) {
         while i < count && !stopped {
             i += 1;
 
-            // Where the children stand: spend of the finished, the number running.
             if spawned.len() > 0 {
                 state = look(spawned, 0).await?;
             }
-            // Wait for a free slot.
             let polls = 0;
             while state.running >= parallel && polls < max_polls {
                 polls += 1;
                 state = look(spawned, poll_s).await?;
             }
 
-            // The thresholds against the known spend.
             let ratio = 0.0;
             match total {
                 Some(t) => {
@@ -170,8 +146,7 @@ pub async fn run(args) {
                 break;
             }
 
-            // The model for this child: the pick, stepped down if a threshold says so
-            // and the role's reserve has been spent.
+            // The pick, stepped down if a threshold says so and the role's reserve has been spent.
             let model = model_picked;
             if rungs > 0 {
                 let role_spent = match state.by_role.get(rname) {
@@ -238,7 +213,7 @@ pub async fn run(args) {
         }
     }
 
-    // Let the rest finish, unless the run was stopped: a stop is "return what's done".
+    // Let the rest finish, unless stopped: a stop returns what is done.
     if !stopped && spawned.len() > 0 {
         let polls = 0;
         state = look(spawned, 0).await?;
@@ -256,10 +231,9 @@ pub async fn run(args) {
     report(spawned, state, total, notes).await
 }
 
-// The finished children's spend and the running count, from one `subagent_list`
-// call (after `wait_s` seconds, when given). `spent` is the high end of each
-// finished, priced child's range; `unknown` counts the finished ones that have
-// no figure; `by_role` splits `spent` by the role that spawned the child.
+// The finished children's spend and the running count, from one `subagent_list` call. `spent` is
+// the high end of each finished, priced child's range; `unknown` counts finished ones with no
+// figure; `by_role` splits `spent` by role.
 async fn look(spawned, wait_s) {
     let ids = [];
     for c in spawned {
@@ -363,7 +337,6 @@ fn find(ladder, model) {
     at
 }
 
-// Thresholds by `at`, ascending (an insertion sort: the list is a handful).
 fn sorted_thresholds(list) {
     let out = [];
     for t in list {
@@ -377,9 +350,7 @@ fn sorted_thresholds(list) {
     out
 }
 
-// What came back: one block per child with its state, spend and the tail of its
-// log (which holds the report it sent, or the question it ended on), then the
-// notes of what the thresholds did.
+// One block per child (state, spend, tail of its log, which holds its report or question), then the threshold notes.
 async fn report(spawned, state, total, notes) {
     let out = "fanout: " + `${spawned.len()}` + " child(ren) started\n";
     for c in spawned {

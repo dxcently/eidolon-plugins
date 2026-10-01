@@ -1,10 +1,6 @@
-// `subagent_steer`: one message into a running child, delivered with `send` and
-// waking it. A steer reaches the child at its next step — mid-turn, before it
-// settles — so it changes the plan rather than answering a question. It is not
-// surgery on a token: whatever the child is doing when the message lands, it
-// finishes that step first.
-//
-// One file, self-contained, like every tool file.
+// `subagent_steer`: one message into a running child, delivered with `send` and waking it.
+// It lands at the child's next step, not mid-token: it changes the plan rather than
+// answering a question, and whatever the child is doing finishes first.
 pub fn manifest() {
     #{
         name: "subagent_steer",
@@ -38,9 +34,7 @@ pub async fn call(input) {
         return Err("say what to steer with: `text` was empty");
     }
 
-    // The lookup is the same one `subagent_list` does, and it is in the script:
-    // the child's own state directory names it, the journal in its log names
-    // its registration, and only then is there a peer id to send to.
+    // The child's state directory names its journal, the journal names its registration, and only then is there a peer id.
     let said = eidolon::shell(sh_cmd(STEER_SH, [id]), Some(60)).await?;
     let kind = "";
     let peer = "";
@@ -52,15 +46,12 @@ pub async fn call(input) {
         None => {}
     }
     if kind != "found" || peer == "" {
-        // Not registered yet, finished, gone, or unknown: the script's own
-        // sentence is the answer, and it says which.
+        // Not registered yet, finished, gone or unknown: the script's own sentence says which.
         return Ok(`${said}`);
     }
 
-    // `peer_send` is a host primitive and takes the id with it, so the two
-    // values the report names are read before the call, not after: a value
-    // handed to a primitive is gone, and reading it afterwards is a runtime
-    // "cannot read, value is moved".
+    // `peer_send` takes its id with it, so the two values the report names are read before
+    // the call: a value handed to a primitive is gone ("cannot read, value is moved").
     let child = `${peer}`;
     let me = `${id}`;
     let delivered = eidolon::peer_send(peer, text, true).await?;
@@ -69,15 +60,9 @@ The child reads it at its next step, not mid-token. \`subagent_trace ${me}\` a m
     Ok(report)
 }
 
-// Finding the peer id, as one POSIX sh script. A child's live identity is its
-// journal: `eidolon run` prints `session: <journal>` to stderr, and the
-// registration a session leaves in the runtime directory names that same
-// journal. The roster's *title* cannot do this job — `eidolon run` registers
-// before it is asked anything, so a headless child's title is empty and stays
-// empty.
-//
-// One line of stdout is the answer, so the Rune side reads one word: `found
-// <peer id>`, or `none <why>` with the why in words.
+// Finding the peer id, as one POSIX sh script. A child's live identity is its journal, not
+// the roster's title (empty for a headless child). One line of stdout is the answer:
+// `found <peer id>`, or `none <why>`.
 const STEER_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 runtime=${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/eidolon
 id=$1
@@ -146,9 +131,7 @@ fi
 printf 'none subagent %s is gone: its process is not alive and no status file records an end (the session that spawned it may have exited first), so there is nothing to steer\\n' \"$id\"
 ";
 
-// An id this tool will accept: the shape `subagent_spawn` mints, and nothing
-// else. Every value reaching a shell is quoted, but a path is not a value, and
-// this is what keeps an id from being one.
+// The id becomes a path, and quoting does not protect a path.
 fn checked_id(raw) {
     let id = `${raw}`;
     if !id.starts_with("sa-") || id.contains("/") || id.contains(".") {
@@ -157,15 +140,12 @@ fn checked_id(raw) {
     id
 }
 
-// One shell word: every `'` becomes `'\''` and the whole is wrapped in `'...'`.
 fn quote(text) {
     let s = `${text}`;
     `'${s.replace("'", "'\\''")}'`
 }
 
-// The script, handed to `sh -c` with its arguments after `$0`: POSIX sh rather
-// than whatever `eidolon::shell` runs, so the same text behaves the same on
-// every Unix this extension is installed on.
+// POSIX sh rather than whatever `eidolon::shell` runs.
 fn sh_cmd(script, args) {
     let cmd = `sh -c ${quote(script)} sa`;
     for a in args {
