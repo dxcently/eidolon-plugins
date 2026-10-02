@@ -52,3 +52,9 @@ bottom of each file.
     when it is down.
 - The README has the four sections, as plain commands an agent can run.
 - `cargo clippy --all-targets` is clean and `cargo test` passes.
+
+## Review
+
+An agent may propose a plugin, a library or an index entry. Nothing is merged
+here, or listed in `INDEX.md`, until a human has reviewed it: the PR carries a
+human maintainer's review. An agent never merges its own proposal.

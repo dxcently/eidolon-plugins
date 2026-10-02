@@ -1,0 +1,12 @@
+pub fn workflow() {
+    #{
+        name: "greet",
+        description: "Greet the world through the plugin's own tool.",
+        approval: "read_only",
+        params: #{ "type": "object", "properties": #{} },
+    }
+}
+
+pub async fn run(args) {
+    eidolon::tool_call("plugin_hello", #{ who: "workflow" }).await
+}

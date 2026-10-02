@@ -1,0 +1,23 @@
+// `plugin_hello`: the file is `hello.rn`, the bare verb; the declared name is the namespaced one.
+
+pub fn manifest() {
+    #{
+        name: "plugin_hello",
+        description: "Say hello to someone. Calls nothing outside eidolon.",
+        approval: "read_only",
+        input_schema: #{
+            "type": "object",
+            "properties": #{
+                "who": #{ "type": "string", "description": "Who to greet. Default world." },
+            },
+        },
+    }
+}
+
+pub async fn call(input) {
+    let who = match input.get("who") {
+        Some(v) => `${v}`,
+        None => "world",
+    };
+    Ok(`hello, ${who}`)
+}

@@ -1,0 +1,16 @@
+// Copy this folder, then rename it: the folder name, `name` below and the tool's `name:` in
+// tools/hello.rn must agree (see README.md). `libraries:` is optional and needs an eidolon
+// that has it: #{ repo: "owner/repo", path: "libs/x/x.rn", pin: "sha256:<64 hex>" } vendors
+// that file into lib/ on install, refusing it if the bytes do not hash to the pin.
+
+pub fn manifest() {
+    #{
+        name: "plugin",
+        version: "0.1.0",
+        description: "a skeleton: one tool that greets, one workflow that calls it",
+        claims: #{
+            tools: ["hello"],
+            workflows: ["greet"],
+        },
+    }
+}

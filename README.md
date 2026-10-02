@@ -20,6 +20,14 @@ All need eidolon with the plugin runtime (upstream `master`); `jev` also needs w
 `search` tool, tied to the session's own key. To read a result, use `fetch`,
 or `browser_open` + `browser_read` for pages that need a real browser.
 
+## Making your own plugin
+
+Copy [`templates/plugin/`](templates/plugin/) into your own repo and rename it;
+its README says which three names to change. Plugins outside this repo are
+listed in [INDEX.md](INDEX.md); an entry goes in by PR and only after a human
+has reviewed it. `libs/`, shared Rune libraries pinned through a manifest's
+`libraries:`, is coming from upstream as a PR.
+
 ## Installing one
 
 Tell an agent:
