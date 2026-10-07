@@ -187,22 +187,23 @@ async fn run_tool_action(rt, params) {
     }
     let input = render_input(oget_or(params, "input", #{}), scope_of(rt), rt.warnings);
     let into = oget_or(params, "into", "obs");
+    let label = name.clone();
     let result = eidolon::tool_call(name, input).await;
     rt.counts.actions += 1;
     let text = match result {
         Ok(t) => t,
         Err(e) => {
             if tool_fatal(e) {
-                return e_fatal(name + " was refused: " + e);
+                return e_fatal(label + " was refused: " + e);
             }
-            return Err(#{ k: "tool", text: e, reason: "failed", tool: name });
+            return Err(#{ k: "tool", text: e, reason: "failed", tool: label });
         }
     };
     let candidate = build_obs(rt.gr, text);
     if candidate.truncated {
         return Err(#{
-            k: "tool", tool: name, reason: "truncated",
-            text: "observation from '" + name + "' was truncated in transport: " + `${candidate.text.chars().count()}` + " of " + `${candidate.chars}` + " declared characters arrived",
+            k: "tool", tool: label, reason: "truncated",
+            text: "observation from '" + label + "' was truncated in transport: " + `${candidate.text.chars().count()}` + " of " + `${candidate.chars}` + " declared characters arrived",
         });
     }
     match oget(params, "expect") {
@@ -215,8 +216,8 @@ async fn run_tool_action(rt, params) {
             let probe = #{ context: ctx, input: rt.input, event: rt.event, run: #{ id: "", step: rt.counts.steps } };
             if !eval_guard(rt, g, probe).await? {
                 return Err(#{
-                    k: "tool", tool: name, reason: "unexpected",
-                    text: "observation from '" + name + "' did not satisfy expect (" + g.type + "): not the kind of result this action asked for",
+                    k: "tool", tool: label, reason: "unexpected",
+                    text: "observation from '" + label + "' did not satisfy expect (" + g.type + "): not the kind of result this action asked for",
                 });
             }
         }

@@ -237,6 +237,12 @@ t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state \
 # final_state\": \"arrived\"
 ```
 
+An observation the interpreter rejects ends the run as `failed`, with the tool
+named in the error (`observation from 'browser_snapshot' was truncated in
+transport: ...`). `tests/jev/wiki-hop-fail.sh` checks that with a fake browser
+whose snapshot is one character shorter than it declares (`FB_SHORT=1`); it
+needs no service and takes the same variables.
+
 Exit codes of `eidolon workflow run`: 0 completed, 1 parked, 2 failed, 3 refused.
 
 ## Running a graph

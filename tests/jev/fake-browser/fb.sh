@@ -2,7 +2,8 @@
 # fb.sh <open|snapshot|click|back> [arg]: a five-page fake of en.wikipedia.org, so wiki-hop
 # runs without Chromium. It answers the shapes the real tools do, from site/, and keeps
 # "where am I" in $FB_STATE. `snapshot [max]` keeps at most max links, in document order,
-# like the real browser_snapshot's `max`; chars: is the length of what it returns.
+# like the real browser_snapshot's `max`; chars: is the length of what it returns, plus $FB_SHORT
+# if set (a snapshot that arrives shorter than it declared, as a spilled one does).
 here=$(cd "$(dirname "$0")" && pwd)
 st=${FB_STATE:-/tmp/jevrig/fb}
 mkdir -p "$st"
@@ -22,7 +23,7 @@ snapshot)
     { skip = 0 }
     /^ *- link / { n++; if (max != "" && n > max) { skip = 1; lind = ind; next } }
     { print }' "$here/site/$name.txt")
-  printf 'url: https://en.wikipedia.org/wiki/%s\ntitle: %s - Wikipedia\nheading: %s\nscope: main\nchars: %d\n\n%s' "$name" "$title" "$title" "${#body}" "$body" ;;
+  printf 'url: https://en.wikipedia.org/wiki/%s\ntitle: %s - Wikipedia\nheading: %s\nscope: main\nchars: %d\n\n%s' "$name" "$title" "$title" "$(( ${#body} + ${FB_SHORT:-0} ))" "$body" ;;
 click)
   name=$(cur); [ -n "$name" ] || { echo "no page open" >&2; exit 1; }
   url=$(awk -v r="[ref=$2]" 'f && /- \/url:/ {sub(/.*- \/url: */,""); print; exit} index($0, r) {f=1}' "$here/site/$name.txt")
