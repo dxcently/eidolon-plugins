@@ -4,7 +4,7 @@
 # starts stub_service.py and runs `Cat` -> `Ancient Egypt`.
 #
 #   t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state \
-#     XDG_DATA_HOME=$t/data bash tests/jev/wiki-hop.sh
+#     XDG_DATA_HOME=$t/data XDG_RUNTIME_DIR=$t/run bash tests/jev/wiki-hop.sh
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)

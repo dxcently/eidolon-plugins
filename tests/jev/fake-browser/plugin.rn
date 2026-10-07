@@ -5,7 +5,7 @@ pub fn manifest() {
     #{
         name: "browser",
         version: "0.0.0",
-        description: "TEST DOUBLE for jev's tests, never install into a real config. A four-page fake of en.wikipedia.org behind browser_open/snapshot/click/back, for testing jev's wiki-hop.",
+        description: "TEST DOUBLE for jev's tests, never install into a real config. A five-page fake of en.wikipedia.org behind browser_open/snapshot/click/back, for testing jev's wiki-hop.",
         claims: #{ tools: ["open", "snapshot", "click", "back"] },
     }
 }

@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# guard.sh: sourced by scripts that install the fake `browser`. Refuses unless XDG_CONFIG_HOME
-# and HOME are throwaway directories (the jev tools read ~/.config/eidolon/jev.token).
+# guard.sh: sourced by scripts that install the fake `browser`. Refuses unless XDG_CONFIG_HOME,
+# XDG_RUNTIME_DIR (where eidolon registers a session among its peers) and HOME are throwaway
+# directories (the jev tools read ~/.config/eidolon/jev.token), and the swarm is off there:
+# a temp config with no config.toml gets `[swarm] enabled = false` written to it, one that
+# has a config.toml must already say so.
 #
 #   . "$(dirname "$0")/guard.sh"; require_temp_config
 _under_tmp() {
@@ -8,6 +11,20 @@ _under_tmp() {
     /tmp/*|/var/tmp/*) return 0 ;;
   esac
   [ -n "${TMPDIR:-}" ] && case $(realpath -m "$1") in "$(realpath -m "$TMPDIR")"/*) return 0 ;; esac
+  return 1
+}
+# The temp config's config.toml, which must turn the swarm off.
+_swarm_off() {
+  local f=$1
+  if [ ! -e "$f" ]; then
+    mkdir -p "$(dirname "$f")" && printf '[swarm]\nenabled = false\n' > "$f"
+    return
+  fi
+  if awk '/^\[/ { s = ($0 ~ /^\[swarm\][ \t]*$/) } s && /^[ \t]*enabled[ \t]*=[ \t]*false[ \t]*(#.*)?$/ { ok = 1 } END { exit !ok }' "$f"; then
+    return 0
+  fi
+  echo "refusing: $f does not turn the swarm off; add" >&2
+  printf '  [swarm]\n  enabled = false\n' >&2
   return 1
 }
 require_temp_config() {
@@ -31,5 +48,15 @@ require_temp_config() {
     echo "  run with HOME=<temp dir> as well." >&2
     return 1
   fi
-  return 0
+  local run=${XDG_RUNTIME_DIR:-}
+  if [ -z "$run" ]; then
+    echo "refusing: XDG_RUNTIME_DIR is not set, so eidolon would register this run among your real sessions." >&2
+    echo "  run with XDG_RUNTIME_DIR=<temp dir> as well." >&2
+    return 1
+  fi
+  if ! _under_tmp "$run"; then
+    echo "refusing: XDG_RUNTIME_DIR ($run) is not under /tmp or \$TMPDIR." >&2
+    return 1
+  fi
+  _swarm_off "$cfg/eidolon/config.toml"
 }

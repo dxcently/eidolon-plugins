@@ -4,7 +4,7 @@
 
 // PIN is the sha256 of graphs/wiki-hop.json; tests/jev/pin.sh rewrites it.
 const GRAPH = "wiki-hop";
-const PIN = "sha256:2db16e39c7016e410bd4f8c96f75255944387762ff4be080af821d94e2124bab";
+const PIN = "sha256:5dea1ebe4badc9dea3f57fe31a628d69d7d5b9b685e21f4a88312fb71b3fb25e";
 
 pub fn workflow() {
     #{

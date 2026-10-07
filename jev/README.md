@@ -211,11 +211,29 @@ kill %1
 
 `wiki-hop` has no stand-in step above, because it needs the browser plugin. To
 run it without Chromium, `tests/jev/wiki-hop.sh` installs jev and the fake
-`browser` into a *temp* config (it refuses any other), starts the stub service
-and runs `Cat` to `Ancient Egypt`:
+`browser` into a *temp* config (it refuses any other, any `XDG_RUNTIME_DIR` that
+is not a temp dir, and a config that leaves the swarm on; in a temp config with
+no `config.toml` it writes `[swarm] enabled = false` itself), starts the stub
+service and runs `Cat` to `Ancient Egypt`:
 
 ```bash
-t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state   XDG_DATA_HOME=$t/data bash $R/tests/jev/wiki-hop.sh
+t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state \
+  XDG_DATA_HOME=$t/data XDG_RUNTIME_DIR=$t/run bash $R/tests/jev/wiki-hop.sh
+# final_state\": \"arrived\"
+```
+
+`wiki-hop` asks the browser for at most 100 links per page (`"max": 100` on the
+`browser_snapshot` in its `reading` state). Without it, a long article's snapshot
+passes eidolon's 8,000-character limit on what a tool hands back, eidolon keeps
+only the head, and the interpreter refuses an observation that arrives shorter
+than its own `chars:` says. A call that names a positive `max` is not cut at
+that limit. `tests/jev/wiki-hop-long.sh` runs the same rig (same variables) on a
+fake article with over 8,000 characters and 130 links, and exits 1 unless the run
+arrives:
+
+```bash
+t=$(mktemp -d); HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state \
+  XDG_DATA_HOME=$t/data XDG_RUNTIME_DIR=$t/run bash $R/tests/jev/wiki-hop-long.sh
 # final_state\": \"arrived\"
 ```
 

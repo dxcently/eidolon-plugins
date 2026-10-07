@@ -4,7 +4,7 @@ pub fn manifest() {
         name: "browser_snapshot",
         description: "Snapshot the page (a test fake)",
         approval: "read_only",
-        input_schema: #{ "type": "object", "properties": #{ "within": #{ "type": "string" }, "roles": #{ "type": "array", "items": #{ "type": "string" } } } },
+        input_schema: #{ "type": "object", "properties": #{ "within": #{ "type": "string" }, "roles": #{ "type": "array", "items": #{ "type": "string" } }, "max": #{ "type": "integer" } } },
     }
 }
 
@@ -25,7 +25,7 @@ fn word(input, key) {
 }
 
 pub async fn call(input) {
-    let arg = "";
+    let arg = word(input, "max")?;
     let out = eidolon::shell("bash \"$FAKE_BROWSER/fb.sh\" snapshot " + arg, Some(20)).await?;
     if out.starts_with("[exit code") || out.contains("--- stderr ---") {
         return Err(out);

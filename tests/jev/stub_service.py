@@ -10,6 +10,7 @@ back) deterministically, so it proves the plumbing and says nothing about judgem
            An option equal to the context's first "Target article: X" gets 0.95.
   entail   entailment 0.9 when most of the hypothesis's longer words appear in the
            premise, else neutral 0.8. MODE=none errors here too.
+  /health  {"ok": true, "stub": true, "decisions_log": "off"}: the stub writes no decisions.
 
     python3 tests/jev/stub_service.py --port 8091 --token-file /tmp/jev.token [--mode first]
 """
@@ -79,7 +80,7 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            return self.reply(200, {"ok": True, "stub": True})
+            return self.reply(200, {"ok": True, "stub": True, "decisions_log": "off"})
         if self.path == "/calls":
             return self.reply(200, STATE["calls"])
         self.reply(404, {"ok": False, "error": "not found"})
