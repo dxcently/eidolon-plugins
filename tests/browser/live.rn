@@ -1,19 +1,20 @@
 // The real browser smoke's sequence, run by tests/browser/smoke-live.sh with `--provider mock`
-// against a real `eidolon-browser` on a dedicated port and a token minted for that run.
+// against a real `eidolon-browser` and a real Chromium, on pages this repo serves itself over
+// loopback (tests/browser/fixture.py). Not shipped in the plugin: the harness copies it into the
+// temp plugin's workflows/.
 //
-// The page is a `data:` URL — the shape this repo's own real-browser tests use — so Chromium
-// really renders and really navigates, and nothing is fetched from a network. Not shipped in the
-// plugin: the harness copies it into the temp plugin's workflows/.
+// The ref it clicks is read out of the snapshot it just took — no ref number is assumed — and the
+// read after the click is what proves the navigation happened.
 
 pub fn workflow() {
     #{
         name: "live",
-        description: "Drive the browser verbs against a real isolated service and a real Chromium: open a data: page with a link, snapshot it, read it, click the link's ref, read again (the navigation is the proof), then back.",
+        description: "Against a real service and a real Chromium: open the smoke's home page, snapshot it, read it, find the `next` link's ref in that snapshot, click it, read again (the second page's text is the proof), then go back.",
         approval: "read_only",
         params: #{
             "type": "object",
             "properties": #{
-                "page": #{ "type": "string", "description": "The data: URL to open." },
+                "base": #{ "type": "string", "description": "The fixture's base URL, e.g. http://127.0.0.1:8098/" },
             },
         },
     }
@@ -26,16 +27,40 @@ async fn step(name, tool, args) {
     }
 }
 
+/// The ref of the link labelled `label`, read from a snapshot's text lines
+/// (`  - link "next" [ref=e7]:`). Empty when the snapshot does not carry one.
+fn ref_for(snapshot, label) {
+    let needle = `link "${label}"`;
+    for line in snapshot.split("\n") {
+        if line.contains(needle) {
+            match line.split_once("[ref=") {
+                Some(after) => match after.1.split_once("]") {
+                    Some(inner) => return inner.0,
+                    None => {}
+                },
+                None => {}
+            }
+        }
+    }
+    ""
+}
+
 pub async fn run(input) {
-    let page = match input.get("page") {
-        Some(p) => if p is String { p } else { "" },
+    let base = match input.get("base") {
+        Some(b) => if b is String { b } else { "" },
         None => "",
     };
     let out = "";
-    out += step("open", "browser_open", #{ url: page }).await;
-    out += step("snapshot", "browser_snapshot", #{}).await;
+    out += step("open", "browser_open", #{ url: base }).await;
+    let snapshot = step("snapshot", "browser_snapshot", #{}).await;
+    out += snapshot;
     out += step("read", "browser_read", #{}).await;
-    out += step("click the link", "browser_click", #{ "ref": "e3" }).await;
+    let link_ref = ref_for(snapshot, "next");
+    if link_ref == "" {
+        out += "ERR  no ref for the `next` link in the snapshot\n";
+        return Ok(out);
+    }
+    out += step(`click ${link_ref}`, "browser_click", #{ "ref": link_ref }).await;
     out += step("read after the click", "browser_read", #{}).await;
     out += step("back", "browser_back", #{}).await;
     Ok(out)
