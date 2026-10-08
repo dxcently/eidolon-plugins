@@ -1,0 +1,62 @@
+// The live smoke's sequence, run by tests/hyprland/smoke.sh in a throwaway config with
+// `--provider mock` (no model key). Every step is one of the plugin's own verbs, so the run's
+// journal is the evidence: what was inspected, what was aimed at, what refused.
+//
+// It is *not* shipped in the plugin: the harness copies it into the temp plugin directory, the
+// same way the offline suite does with selftest.
+//
+// Args: the sink window's address and fingerprint (from hyprland_inspect), and the text to type.
+
+pub fn workflow() {
+    #{
+        name: "smoke",
+        description: "Drive the hyprland verbs against the operator's own compositor, aimed at one named sink window: inspect, capture, focus, click, type, press a key, scroll, then three refusals that must inject nothing. Runs with --provider mock in a throwaway config.",
+        approval: "mutating",
+        params: #{
+            "type": "object",
+            "properties": #{
+                "address": #{ "type": "string", "description": "The sink window's address from hyprland_inspect." },
+                "expect": #{ "type": "string", "description": "Its fingerprint at inspection time." },
+                "text": #{ "type": "string", "description": "The line to type into the sink." },
+                "monitor": #{ "type": "string", "description": "The output to capture." },
+            },
+            "required": ["address", "expect"],
+        },
+    }
+}
+
+fn arg(input, name, fallback) {
+    match input.get(name) {
+        Some(v) => if v is String { v } else { fallback },
+        None => fallback,
+    }
+}
+
+async fn step(name, tool, args) {
+    match eidolon::tool_call(tool, args).await {
+        Ok(t) => `ok   ${name}\n${t}\n`,
+        Err(e) => `ERR  ${name}: ${e}\n`,
+    }
+}
+
+pub async fn run(input) {
+    let address = arg(input, "address", "");
+    let expect = arg(input, "expect", "");
+    let text = arg(input, "text", "hyprland smoke ok");
+    let monitor = arg(input, "monitor", "");
+    let mut out = "";
+    out += await step("inspect", "hyprland_inspect", #{ format: "text" });
+    if monitor != "" {
+        out += await step("screenshot monitor", "hyprland_screenshot", #{ target: "monitor", monitor: monitor });
+    }
+    out += await step("screenshot window", "hyprland_screenshot", #{ target: "window", window: address, expect: expect });
+    out += await step("focus", "hyprland_focus", #{ window: address, expect: expect });
+    out += await step("click", "hyprland_click", #{ window: address, expect: expect, x: 40, y: 40, button: "left" });
+    out += await step("type", "hyprland_type", #{ window: address, expect: expect, text: text });
+    out += await step("key", "hyprland_key", #{ window: address, expect: expect, key: "Escape" });
+    out += await step("scroll", "hyprland_scroll", #{ window: address, expect: expect, dy: 3 });
+    // The refusals: each must inject nothing, and the sink's content is the evidence.
+    out += await step("refuse: stale fingerprint", "hyprland_click", #{ window: address, expect: `${expect} (stale)`, x: 10, y: 10, button: "left" });
+    out += await step("refuse: control character", "hyprland_type", #{ window: address, expect: expect, text: "line\nbreak" });
+    Ok(out)
+}
