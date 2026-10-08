@@ -1,94 +1,166 @@
 #!/usr/bin/env bash
-# smoke.sh: the operator-gated live smoke for the hyprland plugin.
+# smoke.sh: the hyprland plugin's live smoke — its own scratch sink, a throwaway config, and no
+# other window touched. DRY BY DEFAULT; armed by HYPRLAND_SMOKE_GO=1.
 #
-# DRY BY DEFAULT. With no HYPRLAND_SMOKE_GO=1 this prints the exact sequence and touches
-# nothing: no compositor call, no window, no key. Armed, it runs the same sequence through the
-# plugin's own verbs against the operator's compositor, aimed at one sink window the operator
-# names — and it installs nothing, trusts nothing outside its throwaway config, and never
-# starts a service (the plugin has none).
+#   bash tests/hyprland/smoke.sh                 # print the plan; touch nothing
+#   HYPRLAND_SMOKE_GO=1 bash tests/hyprland/smoke.sh
 #
-#   bash tests/hyprland/smoke.sh                 # print the plan (safe, any time)
-#   HYPRLAND_SMOKE_GO=1 bash tests/hyprland/smoke.sh --sink-class hyprland-smoke --monitor DP-1
-#
-# The sink is the operator's to create and to close; the plugin has no close verb by design:
-#   hyprctl dispatch 'hl.dsp.exec_cmd("foot --title hyprland-smoke -e sh -c '\''printf \"hyprland smoke sink ready\n\"; while IFS= read -r line; do printf \"received: %s\n\" \"$line\"; done'\''")'
-# It reads lines and prints them. Nothing typed into it is executed: there is no prompt, no
-# PATH lookup, and no command is run from its input.
+# It creates the sink itself and closes it itself (by killing the process it spawned, never by
+# closing a window it did not create), announces the input with a countdown so hands can clear,
+# and aborts on the first sign that the target or the focus is not what it aimed at. The sink is
+# an inert reader: it appends what it receives to a log and executes nothing, and no shell
+# command is ever sent to it.
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
-sink_class=hyprland-smoke
-monitor=""
+title=hyprland-smoke
 text="hyprland smoke ok"
-while [ $# -gt 0 ]; do
-    case "$1" in
-    --sink-class) sink_class=${2:?}; shift 2 ;;
-    --monitor) monitor=${2:?}; shift 2 ;;
-    --text) text=${2:?}; shift 2 ;;
-    *) echo "unknown argument: $1" >&2; exit 2 ;;
-    esac
-done
-
-armed=${HYPRLAND_SMOKE_GO:-}
-work=$(mktemp -d)
+run_dir=${HYPRLAND_SMOKE_DIR:-/tmp/hyprland-smoke}
+announce_s=${HYPRLAND_SMOKE_ANNOUNCE_S:-15}
+# The plugin's declared runtime package, used ephemerally: a store path's bin directory put in
+# front of PATH for this run only — no profile, no system install, and the input clients are never
+# executed for help or version (their man pages are what this plugin was written against).
+runtime_bin=${HYPRLAND_SMOKE_RUNTIME_BIN:-}
 say() { printf '%s\n' "$*"; }
 
-say "== hyprland live smoke =="
-say "throwaway config: $work/cfg   (HOME, XDG_CONFIG_HOME, XDG_STATE_HOME, XDG_DATA_HOME)"
-say "sink class: $sink_class   monitor: ${monitor:-<from inspect>}"
-say ""
-say "steps, in order, every one a plugin verb:"
-for s in "hyprland_inspect (read-only)" \
-    "hyprland_screenshot monitor" \
-    "hyprland_screenshot window (the sink, by address + fingerprint)" \
-    "hyprland_focus the sink" \
-    "hyprland_click (button left) at 40,40 inside the sink" \
-    "hyprland_type the text into the sink" \
-    "hyprland_key Escape" \
-    "hyprland_scroll dy=3 at the sink" \
-    "refusal: click with a deliberately stale fingerprint -> must inject nothing" \
-    "refusal: text containing a newline -> must be refused, nothing typed" \
-    "read the sink afterwards: its lines are the evidence"; do
-    say "  - $s"
-done
-say ""
-say "cleanup: delete $work and the PNGs under /tmp/eidolon-hyprland; the operator closes the sink"
-say "(no close verb exists in this plugin, on purpose)"
+# ---- guards ----------------------------------------------------------------------------------
+command -v hyprctl >/dev/null || { say "refusing: hyprctl is not on PATH"; exit 2; }
+command -v foot >/dev/null || { say "refusing: foot (the sink's terminal) is not on PATH"; exit 2; }
+[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ] || { say "refusing: no Hyprland session in this environment"; exit 2; }
+if hyprctl -j clients 2>/dev/null | grep -q "\"title\": \"$title\""; then
+    say "refusing: a window titled $title already exists — that is not this script's sink"; exit 2
+fi
 
-if [ -z "$armed" ]; then
+if [ -n "$runtime_bin" ]; then
+    [ -d "$runtime_bin" ] || { say "refusing: HYPRLAND_SMOKE_RUNTIME_BIN is not a directory: $runtime_bin"; exit 2; }
+    export PATH="$runtime_bin:$PATH"
+fi
+
+say "== hyprland live smoke (own scratch sink) =="
+say "runtime: ${runtime_bin:-<ordinary PATH>} — input clients: $(command -v wlrctl 2>/dev/null || echo '<absent: the input steps will refuse by name>') / $(command -v wtype 2>/dev/null || echo '<absent>')"
+say "sink title: $title      terminal: foot -e the sink script      evidence: $run_dir/sink.log"
+say "steps when armed: create the sink, find it by title, focus it, VERIFY it is focused and its"
+say "fingerprint is unchanged, screenshot it, click (button left) at 30,30 inside it, type the"
+say "text, press Return, press Escape, scroll; then two refusals that must inject nothing."
+say "then: read $run_dir/sink.log (the typed line must be there, once), assert every expected"
+say "step is ok and no step erred, kill the sink's own process, delete the throwaway config."
+say ""
+say "abort rules: sink missing, sink gone, sink moved or changed, sink not focused after the"
+say "focus step, any ERR in an expected step, anything in the sink log but the one line."
+if [ "${HYPRLAND_SMOKE_GO:-}" != "1" ]; then
     say ""
     say "DRY RUN: nothing was run and nothing on the desktop was touched."
-    say "To arm it: start the sink yourself (command above), then:"
-    say "  HYPRLAND_SMOKE_GO=1 bash tests/hyprland/smoke.sh --sink-class $sink_class${monitor:+ --monitor $monitor}"
-    say "This refuses to arm without that variable on purpose: a live run moves the pointer,"
-    say "types, and presses keys in the operator's real session."
-    rm -rf "$work"
     exit 0
 fi
 
-# ---- armed ----------------------------------------------------------------------------------
+# ---- armed: announce, then act ---------------------------------------------------------------
+say ""
+say "!! INPUT COMING: the pointer will move inside the sink window and one line will be typed"
+say "!! into it. Keep hands off the keyboard and mouse for ${announce_s}s. The sink is the only"
+say "!! window this script aims at; anything else it will refuse to touch."
+for i in $(seq "$announce_s" -1 1); do printf '   %s...\r' "$i"; sleep 1; done; printf '   go\n'
+
+work=$(mktemp -d)
+mkdir -p "$run_dir"
+: > "$run_dir/sink.log"
+cat > "$run_dir/sink.sh" <<'SINK'
+#!/bin/sh
+# The sink: an inert reader. It appends what it receives and executes nothing. No prompt, no
+# PATH lookup, no command from its input.
+printf 'ready\n' >> /tmp/hyprland-smoke/sink.log
+while IFS= read -r line; do
+    printf 'received: %s\n' "$line" >> /tmp/hyprland-smoke/sink.log
+done
+SINK
+chmod +x "$run_dir/sink.sh"
+
+sink_pid=""
+cleanup() {
+    # Close the sink by ending the process that owns it — never by closing a window this script
+    # did not create.
+    if [ -n "$sink_pid" ] && kill -0 "$sink_pid" 2>/dev/null; then kill "$sink_pid" 2>/dev/null || true; fi
+    rm -rf "$work"
+}
+trap cleanup EXIT
+
+hyprctl dispatch "hl.dsp.exec_cmd(\"foot --title $title -a $title -e /bin/sh $run_dir/sink.sh\")" >/dev/null
+found=no
+for _ in $(seq 1 60); do
+    sink_pid=$(hyprctl -j clients 2>/dev/null | python3 -c '
+import json,sys
+for w in json.load(sys.stdin):
+    if "title" in w and "hyprland-smoke" in (w.get("title") or ""):
+        print(w.get("pid")); break
+' 2>/dev/null || true)
+    [ -n "$sink_pid" ] && { found=yes; break; }
+    sleep 0.25
+done
+[ "$found" = yes ] || { say "FAIL: the sink never appeared"; exit 1; }
+say "sink: pid $sink_pid (the process this script will end)"
+
 export HOME=$work XDG_CONFIG_HOME=$work/cfg XDG_STATE_HOME=$work/state XDG_DATA_HOME=$work/data
 mkdir -p "$XDG_CONFIG_HOME/eidolon/plugins"
 plug=$XDG_CONFIG_HOME/eidolon/plugins
 cp -r "$repo/hyprland" "$plug/hyprland"
-cp "$here/smoke.rn" "$plug/hyprland/workflows/smoke.rn"
+cp "$here/live.rn" "$plug/hyprland/workflows/live.rn"
 eidolon=$(command -v eidolon)
 "$eidolon" plugins trust hyprland >/dev/null
 
-# Armed and prepared, but the workflow itself is the operator's to fire: it needs the sink's
-# address and fingerprint from a real inspection *in this config*, and starting it is the act
-# that moves the pointer. So the script stops here and prints both commands.
+args=$(python3 -c 'import json,sys; print(json.dumps({"title": sys.argv[1], "text": sys.argv[2]}))' "$title" "$text")
+"$eidolon" workflow run "$plug/hyprland" live --provider mock --args "$args" >"$work/live.out" 2>&1 || true
+
 say ""
-say "prepared: the plugin is trusted in $XDG_CONFIG_HOME, and smoke.rn is in its workflows/."
-say "Two commands to run, in this environment (the config is kept for them):"
+say "---- the run's whole output ----"
+cat "$work/live.out"
+say "-------------------------------"
+say "---- the sink's own log ----"
+cat "$run_dir/sink.log"
+say "----------------------------"
+
+python3 - "$work/live.out" "$run_dir/sink.log" "$text" <<'PYASSERT'
+import json, sys
+raw, sink, text = (open(p).read() for p in sys.argv[1:4])
+line = next((l for l in raw.splitlines() if l.startswith("{")), "")
+ok, fail = [], []
+def want(c, t):
+    (ok if c else fail).append(t)
+report = ""
+if line:
+    obj = json.loads(line)
+    report = obj.get("report", "") or ""
+    want(obj.get("status") == "completed", f"the run completed (status={obj.get('status')})")
+else:
+    fail.append("no JSON line from the run")
+have = "ok   " in report
+want(have, "the report carries steps")
+for step in ["ok   focus", "ok   screenshot window", "ok   click", "ok   type", "ok   return", "ok   key", "ok   scroll"]:
+    want(step in report, f"step present: {step}")
+want("verified: the sink is the focused window" in report, "the sink was verified focused before any act")
+want("ERR  refuse:" not in report, "the two refusals erred as intended (they are expected to)")
+erred = [l for l in report.splitlines() if l.startswith("ERR")]
+want(not erred, f"no step erred: {erred}")
+lines = [l for l in sink.splitlines() if l.strip()]
+want(lines and lines[0] == "ready", f"the sink started and logged it: {lines[:1]}")
+want(lines.count(f"received: {text}") == 1, "the typed line reached the sink exactly once")
+want(len(lines) == 2, f"nothing else reached the sink: {lines[1:]}")
+for l in ok: print("PASS", l)
+for l in fail: print("FAIL", l)
+sys.exit(1 if fail else 0)
+PYASSERT
+verdict=$?
+
+python3 - "$work/live.out" "$run_dir/sink.log" "$HOME" <<'PYLOGS'
+import pathlib, sys
+src, sink, dest = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
+durable = pathlib.Path.home() / ".local/share/eidolon/reports/hyprland-live-smoke"
+durable.mkdir(parents=True, exist_ok=True)
+for p in (src, sink):
+    text = pathlib.Path(p).read_text(errors="replace")
+    (durable / pathlib.Path(p).name).write_text(text)
+print(durable)
+PYLOGS
 say ""
-say "  export HOME=$HOME XDG_CONFIG_HOME=$XDG_CONFIG_HOME XDG_STATE_HOME=$XDG_STATE_HOME XDG_DATA_HOME=$XDG_DATA_HOME"
-say "  eidolon run --provider mock --yolo 'call hyprland_inspect with format json and report the \"$sink_class\" window'"
-say "  # take that window's address and fingerprint, then:"
-say "  eidolon workflow run $plug/hyprland smoke --provider mock \\"
-say "      --args '{\"address\":\"<address>\",\"expect\":\"<fingerprint>\",\"text\":\"$text\"${monitor:+,\"monitor\":\"$monitor\"}}'"
-say ""
-say "Every step above is a dispatched call, so the run's journal is the evidence. The three"
-say "refusals are in the same run deliberately: they are the part that must inject nothing."
-exit 0
+say "logs kept: ~/.local/share/eidolon/reports/hyprland-live-smoke/"
+say "verdict: $([ $verdict -eq 0 ] && echo "the live smoke passed" || echo "the live smoke FAILED")"
+exit $verdict
