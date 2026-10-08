@@ -44,19 +44,19 @@ pub async fn run(input) {
     let expect = arg(input, "expect", "");
     let text = arg(input, "text", "hyprland smoke ok");
     let monitor = arg(input, "monitor", "");
-    let mut out = "";
-    out += await step("inspect", "hyprland_inspect", #{ format: "text" });
+    let out = "";
+    out += step("inspect", "hyprland_inspect", #{ format: "text" }).await;
     if monitor != "" {
-        out += await step("screenshot monitor", "hyprland_screenshot", #{ target: "monitor", monitor: monitor });
+        out += step("screenshot monitor", "hyprland_screenshot", #{ target: "monitor", monitor: monitor }).await;
     }
-    out += await step("screenshot window", "hyprland_screenshot", #{ target: "window", window: address, expect: expect });
-    out += await step("focus", "hyprland_focus", #{ window: address, expect: expect });
-    out += await step("click", "hyprland_click", #{ window: address, expect: expect, x: 40, y: 40, button: "left" });
-    out += await step("type", "hyprland_type", #{ window: address, expect: expect, text: text });
-    out += await step("key", "hyprland_key", #{ window: address, expect: expect, key: "Escape" });
-    out += await step("scroll", "hyprland_scroll", #{ window: address, expect: expect, dy: 3 });
+    out += step("screenshot window", "hyprland_screenshot", #{ target: "window", window: address, expect: expect }).await;
+    out += step("focus", "hyprland_focus", #{ window: address, expect: expect }).await;
+    out += step("click", "hyprland_click", #{ window: address, expect: expect, x: 40, y: 40, button: "left" }).await;
+    out += step("type", "hyprland_type", #{ window: address, expect: expect, text: text }).await;
+    out += step("key", "hyprland_key", #{ window: address, expect: expect, key: "Escape" }).await;
+    out += step("scroll", "hyprland_scroll", #{ window: address, expect: expect, dy: 3 }).await;
     // The refusals: each must inject nothing, and the sink's content is the evidence.
-    out += await step("refuse: stale fingerprint", "hyprland_click", #{ window: address, expect: `${expect} (stale)`, x: 10, y: 10, button: "left" });
-    out += await step("refuse: control character", "hyprland_type", #{ window: address, expect: expect, text: "line\nbreak" });
+    out += step("refuse: stale fingerprint", "hyprland_click", #{ window: address, expect: `${expect} (stale)`, x: 10, y: 10, button: "left" }).await;
+    out += step("refuse: control character", "hyprland_type", #{ window: address, expect: expect, text: "line\nbreak" }).await;
     Ok(out)
 }

@@ -1,0 +1,32 @@
+// The browser smoke's sequence, run by tests/browser/smoke.sh with `--provider mock`: the six
+// tools against tests/browser/stub.py, which speaks the same wire and fetches nothing. Not
+// shipped in the plugin — the harness copies it into the temp plugin's workflows/.
+
+pub fn workflow() {
+    #{
+        name: "smoke",
+        description: "Drive the browser verbs against the stand-in service: open, snapshot, read, click a ref, then click a stale ref that must be refused, then back. No Chromium, no page, no network.",
+        approval: "read_only",
+        params: #{ "type": "object", "properties": #{} },
+    }
+}
+
+async fn step(name, tool, args) {
+    match eidolon::tool_call(tool, args).await {
+        Ok(t) => `ok   ${name}: ${t}\n`,
+        Err(e) => `ERR  ${name}: ${e}\n`,
+    }
+}
+
+pub async fn run(input) {
+    let out = "";
+    out += step("open", "browser_open", #{ url: "http://stub.invalid/" }).await;
+    out += step("snapshot", "browser_snapshot", #{}).await;
+    out += step("read", "browser_read", #{}).await;
+    out += step("click e1", "browser_click", #{ "ref": "e1" }).await;
+    // A ref taken from the snapshot above, used after another open: stale by construction.
+    out += step("open again", "browser_open", #{ url: "http://stub.invalid/next" }).await;
+    out += step("click a stale ref", "browser_click", #{ "ref": "e9" }).await;
+    out += step("back", "browser_back", #{}).await;
+    Ok(out)
+}
