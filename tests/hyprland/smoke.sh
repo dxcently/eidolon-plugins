@@ -22,6 +22,9 @@ announce_s=${HYPRLAND_SMOKE_ANNOUNCE_S:-15}
 # front of PATH for this run only — no profile, no system install, and the input clients are never
 # executed for help or version (their man pages are what this plugin was written against).
 runtime_bin=${HYPRLAND_SMOKE_RUNTIME_BIN:-}
+# The real home, before HOME is replaced by the throwaway one: the durable evidence goes there,
+# not into a temp directory that is about to be deleted.
+real_home=$HOME
 say() { printf '%s\n' "$*"; }
 
 # ---- guards ----------------------------------------------------------------------------------
@@ -150,10 +153,10 @@ sys.exit(1 if fail else 0)
 PYASSERT
 verdict=$?
 
-python3 - "$work/live.out" "$run_dir/sink.log" "$HOME" <<'PYLOGS'
+python3 - "$work/live.out" "$run_dir/sink.log" "$real_home" <<'PYLOGS'
 import pathlib, sys
 src, sink, dest = sys.argv[1], sys.argv[2], pathlib.Path(sys.argv[3])
-durable = pathlib.Path.home() / ".local/share/eidolon/reports/hyprland-live-smoke"
+durable = dest / ".local/share/eidolon/reports/hyprland-live-smoke"
 durable.mkdir(parents=True, exist_ok=True)
 for p in (src, sink):
     text = pathlib.Path(p).read_text(errors="replace")
