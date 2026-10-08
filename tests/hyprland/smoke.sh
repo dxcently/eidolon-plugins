@@ -123,7 +123,8 @@ say "----------------------------"
 
 python3 - "$work/live.out" "$run_dir/sink.log" "$text" <<'PYASSERT'
 import json, sys
-raw, sink, text = (open(p).read() for p in sys.argv[1:4])
+# Two paths and a string: the text is the *expected line*, not a file to open.
+raw, sink, text = open(sys.argv[1]).read(), open(sys.argv[2]).read(), sys.argv[3]
 line = next((l for l in raw.splitlines() if l.startswith("{")), "")
 ok, fail = [], []
 def want(c, t):
@@ -140,9 +141,18 @@ want(have, "the report carries steps")
 for step in ["ok   focus", "ok   screenshot window", "ok   click", "ok   type", "ok   return", "ok   key", "ok   scroll"]:
     want(step in report, f"step present: {step}")
 want("verified: the sink is the focused window" in report, "the sink was verified focused before any act")
-want("ERR  refuse:" not in report, "the two refusals erred as intended (they are expected to)")
-erred = [l for l in report.splitlines() if l.startswith("ERR")]
-want(not erred, f"no step erred: {erred}")
+# The refusals are *expected* to be errors — a refusal is `is_error: true`, which a workflow
+# script sees as an `Err`, so `step()` writes `ERR  refuse: …`. Asserting their absence would
+# invert the meaning, and (worse) would pass if the refusal had failed to refuse: the tool would
+# then answer `ok   refuse: …` and the click's refusal would be invisible to the sink log, which
+# only ever sees text. So: both refusals must be present as errors, exactly two, and no other
+# step may have erred.
+refusals = [l for l in report.splitlines() if l.startswith("ERR  refuse:")]
+want(len(refusals) == 2, f"both refusals fired as refusals (found {len(refusals)})")
+want(any("stale fingerprint" in l for l in refusals), "the stale-fingerprint click refused rather than clicked")
+want(any("contains a newline" in l for l in refusals), "the newline text refused rather than typed")
+other = [l for l in report.splitlines() if l.startswith("ERR") and not l.startswith("ERR  refuse:")]
+want(not other, f"no step but the two refusals erred: {other}")
 lines = [l for l in sink.splitlines() if l.strip()]
 want(lines and lines[0] == "ready", f"the sink started and logged it: {lines[:1]}")
 want(lines.count(f"received: {text}") == 1, "the typed line reached the sink exactly once")
