@@ -1,0 +1,42 @@
+// The real browser smoke's sequence, run by tests/browser/smoke-live.sh with `--provider mock`
+// against a real `eidolon-browser` on a dedicated port and a token minted for that run.
+//
+// The page is a `data:` URL — the shape this repo's own real-browser tests use — so Chromium
+// really renders and really navigates, and nothing is fetched from a network. Not shipped in the
+// plugin: the harness copies it into the temp plugin's workflows/.
+
+pub fn workflow() {
+    #{
+        name: "live",
+        description: "Drive the browser verbs against a real isolated service and a real Chromium: open a data: page with a link, snapshot it, read it, click the link's ref, read again (the navigation is the proof), then back.",
+        approval: "read_only",
+        params: #{
+            "type": "object",
+            "properties": #{
+                "page": #{ "type": "string", "description": "The data: URL to open." },
+            },
+        },
+    }
+}
+
+async fn step(name, tool, args) {
+    match eidolon::tool_call(tool, args).await {
+        Ok(t) => `ok   ${name}: ${t}\n`,
+        Err(e) => `ERR  ${name}: ${e}\n`,
+    }
+}
+
+pub async fn run(input) {
+    let page = match input.get("page") {
+        Some(p) => if p is String { p } else { "" },
+        None => "",
+    };
+    let out = "";
+    out += step("open", "browser_open", #{ url: page }).await;
+    out += step("snapshot", "browser_snapshot", #{}).await;
+    out += step("read", "browser_read", #{}).await;
+    out += step("click the link", "browser_click", #{ "ref": "e3" }).await;
+    out += step("read after the click", "browser_read", #{}).await;
+    out += step("back", "browser_back", #{}).await;
+    Ok(out)
+}

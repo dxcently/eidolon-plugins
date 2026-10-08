@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
-# smoke.sh: the browser plugin against a stand-in service — no Chromium, no page, no network, and
-# NO REAL TOKEN. DRY BY DEFAULT.
+# smoke.sh: a CONTRACT TEST for the browser tools, through a stand-in service — no Chromium, no
+# page, no network, and no real token. It is not the browser plugin's live smoke: nothing here
+# renders or navigates, and canned answers are not evidence about Chromium or about the real
+# service. The real smoke is tests/browser/smoke-live.sh (a real isolated eidolon-browser and a
+# real Chromium); this one is what runs anywhere, any time, and it is what a tool-contract change
+# should be checked against. DRY BY DEFAULT.
 #
 #   bash tests/browser/smoke.sh            # print the plan and whether a service is up (read-only)
 #   BROWSER_SMOKE_GO=1 bash tests/browser/smoke.sh   # run the mock path end to end
@@ -27,7 +31,7 @@ say() { printf '%s\n' "$*"; }
 real=no
 if timeout 3 curl -fsS "$health" >/dev/null 2>&1; then real=yes; fi
 
-say "== browser smoke (stand-in service) =="
+say "== browser smoke: contract test through a stand-in (NOT the live smoke) =="
 say "the operator's service on 8090: ${real} (probed read-only; this smoke does not use it either way)"
 if [ "$real" = no ]; then
     say "  if a session wants it up: eidolon plugins service start browser   (manual, by the operator)"
