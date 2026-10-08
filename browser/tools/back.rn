@@ -34,7 +34,17 @@ fn service() {
 // POST {method, args} to /call; the answer is {ok, result} or {ok: false, error}.
 async fn call_service(method, args) {
     let body = json::to_string(#{ "method": method, "args": args })?;
-    let reply = json::from_string(eidolon::api_request(service(), "POST", "/call", Some(body)).await?)?;
+    // The service is declared, not started: `eidolon plugins service start browser` runs
+    // it, and a machine that wants it always up runs it under systemd (both are in the
+    // plugin's README). So a dial that fails is the operator's next command, and the
+    // answer names it instead of leaving a connection refusal to be interpreted.
+    let sent = match eidolon::api_request(service(), "POST", "/call", Some(body)).await {
+        Ok(r) => r,
+        Err(e) => {
+            return Err(`the browser service is not answering on 127.0.0.1:8090 — start it with "eidolon plugins service start browser", or run it under systemd (see the plugin's README). The dial failed with: ${e}`);
+        }
+    };
+    let reply = json::from_string(sent)?;
     if reply.status != 200 {
         return Err(`browser service answered ${reply.status}: ${reply.body}`);
     }
