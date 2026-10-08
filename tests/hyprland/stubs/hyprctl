@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+# A stand-in for `hyprctl`, for tests: it answers from the scenario directory named by
+# HYPRLAND_FIXTURE and keeps the little bit of state the plugin reads back — where the
+# cursor is, and which window the compositor says is focused after a dispatch.
+#
+# It never talks to a compositor. run.sh also removes WAYLAND_DISPLAY, DISPLAY and
+# HYPRLAND_INSTANCE_SIGNATURE from the environment, so nothing here (or in the tools)
+# could reach a live session even by accident.
+set -uo pipefail
+
+fx=${HYPRLAND_FIXTURE:?HYPRLAND_FIXTURE must name a scenario directory}
+st=${HYPRLAND_STATE:?HYPRLAND_STATE must name a writable state directory}
+
+# answer <what> <fallback>: the n-th call of <what> reads <what>.<n>.json, or the highest
+# file at or below n, or the fallback.
+answer() {
+    local what=$1 fallback=$2 n k
+    n=$(cat "$st/$what.n" 2>/dev/null || echo 0)
+    n=$((n + 1))
+    echo "$n" > "$st/$what.n"
+    k=$n
+    while [ "$k" -ge 1 ]; do
+        if [ -f "$fx/$what.$k.json" ]; then
+            cat "$fx/$what.$k.json"
+            return 0
+        fi
+        k=$((k - 1))
+    done
+    printf '%s' "$fallback"
+}
+
+command=${1:-}
+shift || true
+
+case "$command" in
+status)
+    echo "configProvider: lua"
+    echo "backend: headless"
+    ;;
+-j)
+    what=${1:-}
+    case "$what" in
+    clients) answer clients '[]' ;;
+    monitors) answer monitors '[]' ;;
+    workspaces) answer workspaces '[]' ;;
+    activeworkspace)
+        if [ -f "$st/activeworkspace" ]; then
+            cat "$st/activeworkspace"
+        else
+            answer activeworkspace '{}'
+        fi
+        ;;
+    activewindow)
+        # State wins: a dispatch may have moved the focus, the way the compositor would.
+        if [ -f "$st/activewindow" ]; then
+            printf '{"address": "%s"}\n' "$(cat "$st/activewindow")"
+        else
+            answer activewindow '{}'
+        fi
+        ;;
+    cursorpos)
+        if [ -f "$st/cursor" ]; then
+            read -r x y < "$st/cursor"
+            printf '{"x": %s, "y": %s}\n' "$x" "$y"
+        else
+            answer cursorpos '{"x": 0, "y": 0}'
+        fi
+        ;;
+    *)
+        echo "the stub hyprctl does not answer -j $what" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+dispatch)
+    expr=${1:?the stub hyprctl needs the dispatcher expression}
+    printf '%s\n' "$expr" >> "$st/dispatch.log"
+    if [ -f "$fx/dispatch_fail" ]; then
+        cat "$fx/dispatch_fail"
+        exit 1
+    fi
+    # What the compositor would do with the expression, for the read-back the tools do:
+    # a window focus moves the active window, a workspace focus moves the active workspace.
+    case "$expr" in
+    *'hl.dsp.focus({ window = w })'*)
+        addr=$(printf '%s' "$expr" | sed -n 's/.*hl\.get_window("address:\(0x[0-9a-fA-F]*\)").*/\1/p' | head -n 1)
+        printf '%s' "$addr" > "$st/activewindow"
+        ;;
+    *'hl.dsp.focus({ workspace = '*)
+        id=$(printf '%s' "$expr" | sed -n 's/.*hl\.dsp\.focus({ workspace = \([^ ]*\) }).*/\1/p' | head -n 1)
+        id=${id%\"}
+        id=${id#\"}
+        printf '{"id": %s, "name": "%s", "monitor": "DP-2", "monitorID": 1, "windows": 2, "visible": true}\n' "$id" "$id" > "$st/activeworkspace"
+        ;;
+    esac
+    echo "ok"
+    ;;
+*)
+    echo "the stub hyprctl does not implement: $command" >&2
+    exit 2
+    ;;
+esac
