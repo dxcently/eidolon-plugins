@@ -5,6 +5,9 @@
 // The model comes from the `model` argument (never saved), then the project pick for the
 // `kind`, then the global pick. With none, nothing starts and the answer is `needs_choice`:
 // a successful output, not a refusal. This tool never opens a dialog.
+//
+// EIDOLON_CONFIG (README, Prerequisites) is the config the parent runs under: the child runs
+// under it (or under a copy of it, with a budget), and every `eidolon` call here passes it.
 
 pub fn manifest() {
     #{
@@ -83,6 +86,22 @@ pub async fn call(input) {
     }
     let eid = found.trim();
 
+    // EIDOLON_CONFIG, the config the parent runs under: checked by the same prelude as every
+    // eidolon call here, so a bad value refuses now, before anything is written or started. The
+    // script prints `cfg=` and the path, so the answer always has text: eidolon::shell says
+    // "[no output]" for an empty stdout, which would read as a path. "" when unset or empty.
+    let cfg_out = eidolon::shell(sh_eid("printf 'cfg=%s' \"$cfg\"", []), Some(10)).await?;
+    if cfg_out.contains("[exit code") {
+        return Err(`${cfg_out}`);
+    }
+    let parent_cfg = "";
+    match cfg_out.split_once("cfg=") {
+        Some(pair) => parent_cfg = pair.1,
+        None => {
+            return Err("subagent: could not read EIDOLON_CONFIG back from the shell; nothing started");
+        }
+    }
+
     let minutes = deadline_min(input.get("deadline_min"));
     let yolo = match input.get("yolo") {
         Some(v) => v == true,
@@ -130,13 +149,14 @@ pub async fn call(input) {
         return Err(msg);
     }
 
-    let prepared = eidolon::shell(sh_cmd(PREP_SH, [id, budget.calls]), Some(30)).await?;
+    let prepared = eidolon::shell(sh_cmd(CFG_SH + PREP_SH, [id, budget.calls]), Some(30)).await?;
     if prepared.contains("[exit code") || prepared.contains("--- stderr ---") {
         let msg = `the state directory could not be made: ${prepared}`;
         return Err(msg);
     }
     let dir = prepared.trim();
-    let config = "";
+    // The config the child runs under: its budget copy, else the parent's file, else none.
+    let config = parent_cfg;
     if budget.calls != "" {
         config = `${dir}/config.toml`;
     }
@@ -150,9 +170,15 @@ pub async fn call(input) {
     if yolo {
         flags += "--yolo ";
     }
+    // The child's EIDOLON_CONFIG is the config it was given, or unset when it was given none.
+    let cfgenv = "unset EIDOLON_CONFIG";
+    if config != "" {
+        cfgenv = `export EIDOLON_CONFIG=${quote(config)}`;
+    }
     let child = CHILD_SH
         .replace("{seconds}", `${minutes * 60}`)
         .replace("{eid}", quote(eid))
+        .replace("{cfgenv}", cfgenv)
         .replace("{flags}", flags)
         .replace("{brief}", quote(text));
 
@@ -200,7 +226,7 @@ true
 // where the listing says nothing. `eidolon models` also prints a header per provider,
 // `[system]` lines and a cache note; model rows have a `provider:model` first word and
 // the " · " separator. Unpriced rows sort last, never as free.
-const CATALOG_SH = "m=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
+const CATALOG_SH = "m=$(eidolon_cfg models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
 printf '%s\n' \"$m\" | awk '
 /^\\[/ { next }
 $1 ~ /:/ && index($0, \" · \") > 0 {
@@ -217,14 +243,16 @@ $1 ~ /:/ && index($0, \" · \") > 0 {
 ";
 
 // The child's state directory, and -- when $2 (a call budget) is not empty --
-// its config: `max_iterations = $2` first, then the operator's config.toml
+// its config: `max_iterations = $2` first, then the parent's config (the file
+// EIDOLON_CONFIG names, checked by CFG_SH, else the operator's config.toml)
 // without its own top-level max_iterations. The original is only read. Prints
-// the directory.
+// the directory. CFG_SH runs first, so a refused EIDOLON_CONFIG writes nothing.
 const PREP_SH = "root=${XDG_STATE_HOME:-$HOME/.local/state}/eidolon/subagents
 dir=$root/$1
 mkdir -p \"$dir\" || exit 1
 if [ -n \"$2\" ]; then
-  src=${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/config.toml
+  src=$cfg
+  [ -n \"$src\" ] || src=${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/config.toml
   {
     printf 'max_iterations = %s\\n' \"$2\"
     if [ -r \"$src\" ]; then
@@ -439,6 +467,8 @@ const REFUSED = "refused: a subagent may not spawn subagents";
 // session's working directory), in POSIX sh:
 //
 //   * the guard first, so a child of a child is refused at its first line;
+//   * `{cfgenv}`: EIDOLON_CONFIG exported as the config the child runs under, or unset, so the
+//     child's own plugin calls read the same config as the child;
 //   * the deadline as a `sleep` in a backgrounded subshell that signals its process group:
 //     `shell_background` starts the command under `setsid`, so `kill -TERM 0` reaches
 //     `eidolon run` and its whole tree and nothing else. No `timeout`: it is GNU;
@@ -449,6 +479,7 @@ const REFUSED = "refused: a subagent may not spawn subagents";
 const CHILD_SH = "[ -n \"$EIDOLON_SUBAGENT\" ] && { echo \"refused: a subagent may not spawn subagents\" >&2; exit 3; }
 export EIDOLON_SUBAGENT=1
 export EIDOLON_BIN={eid}
+{cfgenv}
 ( trap 'kill \"$sleeper\" 2>/dev/null; exit 0' TERM
   sleep {seconds} &
   sleeper=$!
@@ -656,6 +687,38 @@ fn sh_cmd(script, args) {
     cmd
 }
 
+// EIDOLON_CONFIG (README, Prerequisites), read by the shell because Rune sees no environment.
+// It runs after EID_SH, so `eid` is set: a set and non-empty value must be an absolute path to a
+// readable regular file (links followed), or the script exits 2 with one sentence and runs
+// nothing else. `cfg` is that path, or empty. `eidolon_cfg` runs eidolon with `--config` on it,
+// and without `--config` when there is none. The same text is in every tool that runs eidolon
+// (spawn, list, trace, pick, plan); keep them in step.
+const CFG_SH = "cfg=
+if [ -n \"${EIDOLON_CONFIG:-}\" ]; then
+  why=
+  case \"$EIDOLON_CONFIG\" in
+    /*) ;;
+    *) why='a relative path' ;;
+  esac
+  if [ -z \"$why\" ]; then
+    if [ -d \"$EIDOLON_CONFIG\" ]; then why='a directory'
+    elif [ -L \"$EIDOLON_CONFIG\" ] && [ ! -e \"$EIDOLON_CONFIG\" ]; then why='a dangling link'
+    elif [ ! -e \"$EIDOLON_CONFIG\" ]; then why=missing
+    elif [ ! -f \"$EIDOLON_CONFIG\" ]; then why='not a regular file'
+    elif [ ! -r \"$EIDOLON_CONFIG\" ]; then why=unreadable
+    fi
+  fi
+  if [ -n \"$why\" ]; then
+    printf 'subagent: EIDOLON_CONFIG names %s, which is %s: it must name an absolute path to a readable regular file, so fix it or unset it.\\n' \"$EIDOLON_CONFIG\" \"$why\" >&2
+    exit 2
+  fi
+  cfg=$EIDOLON_CONFIG
+fi
+eidolon_cfg() {
+  if [ -n \"$cfg\" ]; then \"$eid\" --config \"$cfg\" \"$@\"; else \"$eid\" \"$@\"; fi
+}
+";
+
 fn sh_eid(script, args) {
-    sh_cmd(EID_SH + script, args)
+    sh_cmd(EID_SH + CFG_SH + script, args)
 }

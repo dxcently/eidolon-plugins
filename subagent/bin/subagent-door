@@ -8,6 +8,10 @@
 #
 # eidolon is $EIDOLON_BIN if set (and then only that), else `eidolon` on PATH, else
 # $HOME/.local/bin/eidolon, each only if it is an executable that answers `--version`.
+#
+# EIDOLON_CONFIG, when set and not empty, names the config the host runs eidolon under (an
+# absolute path to a readable regular file, else this refuses with exit 2 and starts nothing);
+# the door session then runs under it too (`--config`). Unset or empty: no --config, as before.
 
 if [ $# -lt 1 ]; then
   echo "usage: subagent-door '{\"tool\":\"schema\"}'   (the door's args JSON)" >&2
@@ -43,4 +47,24 @@ if [ -z "$eid" ]; then
   exit 127
 fi
 
+if [ -n "${EIDOLON_CONFIG:-}" ]; then
+  why=
+  case "$EIDOLON_CONFIG" in
+    /*) ;;
+    *) why='a relative path' ;;
+  esac
+  if [ -z "$why" ]; then
+    if [ -d "$EIDOLON_CONFIG" ]; then why='a directory'
+    elif [ -L "$EIDOLON_CONFIG" ] && [ ! -e "$EIDOLON_CONFIG" ]; then why='a dangling link'
+    elif [ ! -e "$EIDOLON_CONFIG" ]; then why=missing
+    elif [ ! -f "$EIDOLON_CONFIG" ]; then why='not a regular file'
+    elif [ ! -r "$EIDOLON_CONFIG" ]; then why=unreadable
+    fi
+  fi
+  if [ -n "$why" ]; then
+    printf 'subagent-door: EIDOLON_CONFIG names %s, which is %s: it must name an absolute path to a readable regular file, so fix it or unset it.\n' "$EIDOLON_CONFIG" "$why" >&2
+    exit 2
+  fi
+  exec "$eid" --config "$EIDOLON_CONFIG" workflow run "$dir" door --args "$args" "$@"
+fi
 exec "$eid" workflow run "$dir" door --args "$args" "$@"

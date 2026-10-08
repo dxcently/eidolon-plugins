@@ -153,7 +153,7 @@ ask where its own directory is, so the second is a guess at where
 
 | field | what it does | enforced |
 |---|---|---|
-| `calls` | the most model calls the child may make. Its own `config.toml` is the operator's with `max_iterations = calls`; the child runs with `--config` on it, so the original is never touched. At the limit the turn ends with an iteration-limit settle | live |
+| `calls` | the most model calls the child may make. Its own `config.toml` is the parent's config (`EIDOLON_CONFIG`, else the operator's) with `max_iterations = calls`; the child runs with `--config` on it, so the original is never touched. At the limit the turn ends with an iteration-limit settle | live |
 | `usd_max` | a dollar ceiling. Recorded in the child's meta; `subagent_list` / `subagent_trace` flag `OVER usd_max` (even the low end of the spend range is past it) or `may be over` (only the high end is) | after the fact |
 | `usd_min` | a reserve: dollars the role may spend before the fan-out workflow will step it down | recorded; the workflow reads it |
 | `floor` (formation role) | a model the workflow's step-down may not go below, by price order | by the workflow |
@@ -261,9 +261,40 @@ answer.
   shell (a Windows `wsl.exe -e`, a service, cron): `PATH` there may hold no
   eidolon at all, or a Windows-side stub that is executable and runs nothing. The
   child `subagent_spawn` starts runs the same binary and gets `EIDOLON_BIN` set
-  to it.
+  to it, and runs under the config named by `EIDOLON_CONFIG` (below).
   Plus `shell_background` and the swarm's `send` (any upstream with the swarm
   built-ins).
+- **`EIDOLON_CONFIG`**, optional, beside `EIDOLON_BIN`: the config the parent runs
+  under. A host that starts eidolon with `--config <file>` sets it to that file in
+  eidolon's environment, which the plugin's shells inherit, and a host that starts
+  eidolon without `--config` must unset it, or a stale value steers the plugin to
+  another file. Unset or empty, the plugin works as it did before: eidolon's
+  default config, and a child with no call budget gets no `--config`. Set, it
+  must be an absolute path to a readable regular file (links are followed), and
+  then every `eidolon` call that reads a config passes `--config` with it:
+  `models` (the catalog in `pick`, `plan` and `spawn`), `log` (`list` and
+  `trace`), and the child's `run` (the `--version` probe that finds the binary
+  reads none). So the model list, the listings and the child's policy are the
+  parent's. `bin/subagent-door` checks the variable the same way and runs the
+  door's own session as `eidolon --config <file> workflow run ...`; a bad value
+  stops it with exit 2 and the same sentence, prefixed `subagent-door:`, before
+  anything runs. The `steer` and `cancel` tools call no `eidolon` binary, so they
+  never refuse over it (through the door, its own check comes first). The
+  fan-out run that `plan` describes is started by the operator: its confirm text
+  says to pass that `--config` when the variable is set. A child with a
+  call budget runs under a copy of that file, made in its own state
+  directory with `max_iterations` set; the copy lives in another directory, so a
+  relative path inside the parent's config would resolve against the copy's
+  directory. Use absolute paths in that config (Minerva's generated configs do).
+  The child's `EIDOLON_CONFIG` is the config it runs under (the copy, or the
+  parent's file), and it is unset when the child is given none; eidolon itself
+  reads no such variable. A set value that is relative, a directory, missing, a
+  dangling link, not a regular file, or unreadable refuses the call before
+  anything is started or written, with this sentence:
+
+  ```
+  subagent: EIDOLON_CONFIG names <path>, which is <reason>: it must name an absolute path to a readable regular file, so fix it or unset it.
+  ```
 - The swarm **not disabled**: `[swarm] enabled = true` in
   `~/.config/eidolon/config.toml`, which is the default. `subagent_spawn`
   refuses when `peers` names no id, and `subagent_steer` cannot deliver: a
@@ -344,6 +375,10 @@ eidolon workflow run ~/.config/eidolon/plugins/subagent door --args '{"tool":"sp
 EIDOLON_BIN=/nonexistent ~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"schema"}'; echo $?
 # subagent-door: EIDOLON_BIN is set to /nonexistent, which is not an executable that runs. ...
 # 127
+
+EIDOLON_CONFIG=relative.toml ~/.config/eidolon/plugins/subagent/bin/subagent-door '{"tool":"list"}'; echo $?
+# subagent-door: EIDOLON_CONFIG names relative.toml, which is a relative path: it must name an absolute path to a readable regular file, so fix it or unset it.
+# 2
 ```
 
 A spawn, end to end — this needs a model that calls tools and takes a while:
@@ -415,7 +450,8 @@ and journals: `kill` them, or `eidolon resume` them, by hand. Your picks
   child it is for anyone reading a roster by eye.
 - **The child inherits the parent's directory, config and secrets**, and the
   parent sees its pid, its log and its journal — nothing of its turns. With a
-  call budget its config is a copy of yours with one key changed.
+  call budget its config is a copy of the parent's (`EIDOLON_CONFIG`, else
+  yours) with one key changed.
 - **The door's `schema` is a summary** kept in `workflows/door.rn`; a workflow
   cannot read a tool's manifest (the one built-in that returns them spills past
   8000 characters), so `eidolon tools` is the exact source.

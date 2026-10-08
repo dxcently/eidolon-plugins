@@ -58,6 +58,9 @@ pub async fn call(input) {
         return Ok(listing(picks));
     }
 
+    // Both writes below come after this: a set and bad EIDOLON_CONFIG refuses here, so nothing is saved.
+    config_ok().await?;
+
     if clear {
         let mine = picks.get(scope).unwrap();
         match mine.get(kind) {
@@ -159,7 +162,7 @@ printf '%s' \"$f\"
 // where the listing says nothing. `eidolon models` also prints a header per provider,
 // `[system]` lines and a cache note; model rows have a `provider:model` first word and
 // the " · " separator. Unpriced rows sort last, never as free.
-const CATALOG_SH = "m=$(\"$eid\" models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
+const CATALOG_SH = "m=$(eidolon_cfg models 2>/dev/null) || { printf 'subagent: `eidolon models` (%s) exited non-zero, so there is no model list.\\n' \"$eid\" >&2; exit 4; }
 printf '%s\n' \"$m\" | awk '
 /^\\[/ { next }
 $1 ~ /:/ && index($0, \" · \") > 0 {
@@ -269,6 +272,17 @@ async fn save_picks(scope, picks) {
     Ok(written.trim())
 }
 
+// CFG_SH alone: it exits 2 with the sentence when EIDOLON_CONFIG is set and bad, and prints
+// nothing when it is unset or good. No eidolon runs here, so a missing binary does not refuse a
+// pick (the save goes ahead and the note says the catalog was unavailable, as before).
+async fn config_ok() {
+    let out = eidolon::shell(sh_cmd(CFG_SH, []), Some(10)).await?;
+    if out.contains("[exit code") {
+        return Err(`${out}`);
+    }
+    Ok(())
+}
+
 fn listing(picks) {
     let out = "";
     for scope in ["project", "global"] {
@@ -362,6 +376,38 @@ fn sh_cmd(script, args) {
     cmd
 }
 
+// EIDOLON_CONFIG (README, Prerequisites), read by the shell because Rune sees no environment.
+// It runs after EID_SH, so `eid` is set: a set and non-empty value must be an absolute path to a
+// readable regular file (links followed), or the script exits 2 with one sentence and runs
+// nothing else. `cfg` is that path, or empty. `eidolon_cfg` runs eidolon with `--config` on it,
+// and without `--config` when there is none. The same text is in every tool that runs eidolon
+// (spawn, list, trace, pick, plan); keep them in step.
+const CFG_SH = "cfg=
+if [ -n \"${EIDOLON_CONFIG:-}\" ]; then
+  why=
+  case \"$EIDOLON_CONFIG\" in
+    /*) ;;
+    *) why='a relative path' ;;
+  esac
+  if [ -z \"$why\" ]; then
+    if [ -d \"$EIDOLON_CONFIG\" ]; then why='a directory'
+    elif [ -L \"$EIDOLON_CONFIG\" ] && [ ! -e \"$EIDOLON_CONFIG\" ]; then why='a dangling link'
+    elif [ ! -e \"$EIDOLON_CONFIG\" ]; then why=missing
+    elif [ ! -f \"$EIDOLON_CONFIG\" ]; then why='not a regular file'
+    elif [ ! -r \"$EIDOLON_CONFIG\" ]; then why=unreadable
+    fi
+  fi
+  if [ -n \"$why\" ]; then
+    printf 'subagent: EIDOLON_CONFIG names %s, which is %s: it must name an absolute path to a readable regular file, so fix it or unset it.\\n' \"$EIDOLON_CONFIG\" \"$why\" >&2
+    exit 2
+  fi
+  cfg=$EIDOLON_CONFIG
+fi
+eidolon_cfg() {
+  if [ -n \"$cfg\" ]; then \"$eid\" --config \"$cfg\" \"$@\"; else \"$eid\" \"$@\"; fi
+}
+";
+
 fn sh_eid(script, args) {
-    sh_cmd(EID_SH + script, args)
+    sh_cmd(EID_SH + CFG_SH + script, args)
 }
