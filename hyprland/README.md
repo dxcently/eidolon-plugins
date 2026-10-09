@@ -26,8 +26,9 @@ opportunity and cannot close it.
   three in one profile; any distro package of the same three works just as well. A verb
   whose client is missing refuses by name rather than failing obscurely.
 - Nothing else: no service, no port, no token, no daemon. Each input verb runs the client
-  for one act and the client exits; the modifiers it pressed are released by the client's
-  own exit path.
+  for one act and the client exits. A chord's modifiers are released **by name inside that
+  same invocation** (`wtype -M ctrl … -m ctrl`), because the client does not reset the seat's
+  modifier state on its way out — see the note in Limits.
 
 ## Prerequisites
 

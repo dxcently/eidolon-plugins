@@ -164,7 +164,7 @@ wlrctl pointer scroll 3 0"
         expect_input "wtype -- hello from the selftest"
         ;;
     key)
-        expect_input "wtype -M ctrl -k Escape"
+        expect_input "wtype -M ctrl -k Escape -m ctrl"
         ;;
     screenshot-monitor)
         expect_grim "grim -o DP-2 $shot/monitor-DP-2.png"

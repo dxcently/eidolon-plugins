@@ -1,15 +1,15 @@
 // `hyprland_key`: press a key, or a chord of modifiers and a key, in the window that was
 // inspected and is focused. The discipline is hyprland_type's: identity and geometry are
 // re-read, the compositor is asked who holds the keyboard focus, and a target that is not
-// focused is refused unless the caller passes `focus_first: true`. The modifiers are
-// pressed, the key is pressed and released, and the input client releases every pressed
-// modifier as it exits — including when the key itself fails, which is why the whole
-// chord is one invocation rather than a sequence of them.
+// focused is refused unless the caller passes `focus_first: true`. The modifiers are pressed,
+// the key is pressed and released, and then the modifiers are released *by name*, all in one
+// client invocation — the release is a `-m` on the same command line, not something the
+// client does on its way out (see the note where the invocation is built).
 
 pub fn manifest() {
     #{
         name: "hyprland_key",
-        description: "Press a key or a chord in a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, key is an XKB keysym name (\"Return\", \"Escape\", \"F1\", \"a\"), mods is an optional list of \"shift\", \"ctrl\", \"alt\", \"logo\", \"win\", \"altgr\", \"capslock\", and repeat sends the chord that many times. The focused window is checked before and after (refused unless it is the target, or focus_first: true was passed), and the modifiers are pressed and released inside one client invocation, so a failure cannot leave a modifier held down.",
+        description: "Press a key or a chord in a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, key is an XKB keysym name (\"Return\", \"Escape\", \"F1\", \"a\"), mods is an optional list of \"shift\", \"ctrl\", \"alt\", \"logo\", \"win\", \"altgr\", \"capslock\", and repeat sends the chord that many times. The focused window is checked before and after (refused unless it is the target, or focus_first: true was passed), and the modifiers are pressed and released by name inside one client invocation, so nothing is left held down.",
         approval: "mutating",
         input_schema: #{
             "type": "object",
@@ -105,8 +105,15 @@ pub async fn call(input) {
         Some(reason) => return Ok(refuse(`nothing was pressed: ${reason}`)),
     }
 
-    // One invocation for the whole chord: the client presses each modifier, presses and
-    // releases the key, and releases every modifier it pressed as it exits.
+    // One invocation for the whole chord: press each modifier, press and release the key, then
+    // release each modifier by name. The release is explicit for a reason — wtype's only
+    // modifier call is the one `-M`/`-m` asks for (main.c, run_mod →
+    // zwp_virtual_keyboard_v1_modifiers), and exiting destroys the virtual keyboard without
+    // resetting the seat's modifiers (Hyprland's CVirtualKeyboard destroy listener resets the
+    // device, not the modifier state), so `-M ctrl` with no `-m ctrl` leaves ctrl depressed for
+    // everything that comes after: the operator's own clicks would carry it, and so would this
+    // plugin's next click. A live probe's own event log shows it: the click and the wheel sent
+    // after `wtype -M ctrl -k a` both arrived with BUTTON_CTRL set.
     let args = [];
     for m in mods {
         args.push("-M");
@@ -117,6 +124,10 @@ pub async fn call(input) {
         args.push("-k");
         args.push(key);
         n += 1;
+    }
+    for m in mods {
+        args.push("-m");
+        args.push(m);
     }
     run_client(INPUT_KEYBOARD, args).await?;
 
@@ -131,7 +142,7 @@ pub async fn call(input) {
     if focused_by_us != "" {
         lines.push(`  ${focused_by_us}`);
     }
-    lines.push(`  focus was verified immediately before the key (${address}); modifiers are pressed and released inside the one client invocation, so nothing is left held down`);
+    lines.push(`  focus was verified immediately before the key (${address}); the modifiers are pressed and released by name inside the one client invocation, so nothing is left held down`);
     if after != address {
         lines.push(`  ERROR: the focused window is ${after} now, not ${address} — the focus moved while the key was going in, so the chord may have gone to another client`);
         return Ok(#{ content: join(lines, "\n"), is_error: true });

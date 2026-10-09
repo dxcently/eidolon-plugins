@@ -164,7 +164,8 @@ pub async fn run(input) {
         let got = call_tool("hyprland_key", call).await;
         if case == "key" {
             ok_with(out, bad, "a chord goes to a focused window", got, "pressed ctrl+Escape");
-            ok_with(out, bad, "the answer says modifiers are released by the client", got, "nothing is left held down");
+            ok_with(out, bad, "the answer says the modifiers are released by name, not by exit", got, "pressed and released by name");
+            ok_with(out, bad, "and that nothing is left held down", got, "nothing is left held down");
         } else {
             refused(out, bad, "an unknown modifier is refused", got, `mods are shift, ctrl, alt, logo, win, altgr, capslock, not "hyper"`);
         }
