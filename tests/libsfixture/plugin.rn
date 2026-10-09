@@ -1,0 +1,18 @@
+// The fixture that proves the libraries system end to end: the manifest
+// declares libs/regex/regex.rn by content pin, `plugins install` vendors
+// the copy into this plugin's lib/, and the scan workflow calls the
+// engine this plugin does not carry. See libs/README.md.
+pub fn manifest() {
+    #{
+        name: "libsfixture",
+        version: "0.1.0",
+        description: "proves the libraries system: a declared library, vendored at install, covered by the run pin",
+        libraries: [
+            #{
+                repo: "dxcently/eidolon-plugins",
+                path: "libs/regex/regex.rn",
+                pin: "sha256:5b1ee5d954fd43f31b41f8782aff00df1c5764d05a0e0c9bb2a59e47d46a1a0f",
+            },
+        ],
+    }
+}

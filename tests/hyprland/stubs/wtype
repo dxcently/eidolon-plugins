@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# A stand-in for `wtype`, for tests: it records the invocation. It creates no virtual
+# keyboard and talks to no compositor, so no key is pressed anywhere.
+set -uo pipefail
+
+st=${HYPRLAND_STATE:?HYPRLAND_STATE must name a writable state directory}
+fx=${HYPRLAND_FIXTURE:?HYPRLAND_FIXTURE must name a scenario directory}
+
+printf 'wtype %s\n' "$*" >> "$st/input.log"
+
+if [ -f "$fx/wtype_fail" ]; then
+    cat "$fx/wtype_fail"
+    exit 1
+fi
+
+if [ $# -eq 0 ]; then
+    echo "wtype needs something to type" >&2
+    exit 2
+fi
+
+exit 0

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# A stand-in for `grim`, for tests: it records what it was asked for and copies the
+# fixture PNG to the named path, so the plugin's read-back (image_read) has a real picture
+# to look at. It captures no screen and talks to no compositor.
+set -uo pipefail
+
+st=${HYPRLAND_STATE:?HYPRLAND_STATE must name a writable state directory}
+fx=${HYPRLAND_FIXTURE:?HYPRLAND_FIXTURE must name a scenario directory}
+png=${HYPRLAND_FIXTURE_PNG:?HYPRLAND_FIXTURE_PNG must name a small real PNG}
+
+printf 'grim %s\n' "$*" >> "$st/grim.log"
+
+if [ -f "$fx/grim_fail" ]; then
+    cat "$fx/grim_fail"
+    exit 1
+fi
+
+# The output file is the last argument; `-` (stdout) is not something these tools ask for.
+out=${@: -1}
+if [ "$out" = "-" ]; then
+    echo "the stub grim does not write to stdout" >&2
+    exit 1
+fi
+mkdir -p "$(dirname "$out")"
+cp "$png" "$out"
