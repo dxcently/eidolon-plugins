@@ -124,9 +124,41 @@ what "verified" means here.
 
 ## Limits, in the answer of every call
 
-- **No atomic targeting.** The re-checks happen immediately before the act; between the
-  last one and the act, a person can move the pointer or a window can move. Hyprland's
-  input primitives take no window, so nothing here can bind an injection to one.
+- **A capture writes a file, which is why `hyprland_screenshot` is `mutating`.** The class is
+  about the disk and not the screen: the caller names the path (default
+  `/tmp/eidolon-hyprland/<target-slug>.png`, in a 0700 directory) and the PNG lands there,
+  overwriting whatever is at that path — the reach `write` has. Nothing about the session
+  changes, and the verb focuses nothing, switches nothing and injects nothing.
+- **No atomic targeting, and the race is named rather than claimed closed.** I found no
+  compositor primitive, in the interfaces examined, that takes a window and injects into it: the
+  pointer verbs go through `wlrctl`'s virtual device and the keyboard verbs through `wtype`'s,
+  and every check is a separate `hyprctl` read. That is an inventory of what was looked at — the
+  dispatchers registered in the running binary, and those two clients' own CLIs — and not a
+  proof that no such call exists anywhere. `wlrctl pointer click` sends a button event and the
+  compositor decides what is under the pointer, so the guard below narrows the window of
+  opportunity and cannot close it: between the last read and the event, a person can move the
+  pointer, a window can move, an output can switch — the answer says exactly that every time.
+- **Every press is guarded, and the guard reads the monitors too.** Before each input event —
+  each press of a multi-click, and the scroll — the monitors, the windows and the pointer's
+  position are read again, and the event is refused if the window is not the one inspected, is
+  gone, is hidden, stopped accepting input, is on a workspace *no output is showing any more*,
+  the point has fallen outside it, or the pointer is not where it was put. The monitors are the
+  part a fingerprint cannot answer: a window's fingerprint carries its own workspace, so it does
+  not change when the output showing it switches to another one, and without re-reading the
+  monitors a click aimed at layout x,y would land on whatever that output is showing at x,y.
+  A multi-click that is stopped part-way says how many presses went in, because "nothing
+  happened" would be false.
+- **What the guard does not cover, said plainly.** None of the interfaces examined answers
+  "which window is under the pointer", so a window overlapping the target at the point — a
+  floating window over it, for instance — is undetectable from here and the event goes to
+  whichever the compositor picks. The keyboard verbs (`hyprland_type`, `hyprland_key`) are
+  addressed by *focus*, not by coordinates, so their guard is the active window rather than the
+  pointer: it catches a focus that has already moved by the time they look, and re-reads the
+  target immediately before the keys — but a workspace switch, or any other change of focus
+  after that check, can still send the keys to a different client, and the tool reports that
+  afterwards instead of preventing it. They do not re-read the monitors at that last instant
+  either; closing that is a separate change, not this one. `hyprland_focus` is the verb whose
+  whole purpose is to switch, and it does so only when asked.
 - **The pointer is moved by displacement.** `wlrctl pointer move <dx> <dy>` has no
   absolute form, so the cursor position is read, the difference sent, and the position read
   back — a pointer that did not arrive is a refusal, not a click somewhere else.

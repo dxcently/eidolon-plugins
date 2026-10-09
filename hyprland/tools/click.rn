@@ -20,7 +20,7 @@
 pub fn manifest() {
     #{
         name: "hyprland_click",
-        description: "Click a point inside a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, x/y are window-relative (or layout coordinates with global: true), button is required (left/right/middle) and never defaulted, count defaults to 1. Re-checks the window's identity and geometry immediately before the pointer moves and again before the button is pressed, and re-checks that the pointer reached the point; a stale, moved, disappeared or non-visible target is refused instead of clicked. The move and the click are separate compositor calls, so a person moving the pointer in between is not detectable — the result says what happened and what could not be guaranteed.",
+        description: "Click a point inside a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, x/y are window-relative (or layout coordinates with global: true), button is required (left/right/middle) and never defaulted, count defaults to 1. Re-checks the window's identity and geometry immediately before the pointer moves and, with the monitors and the pointer's position, again immediately before every press — so an output that switched the workspace it shows, a window that moved or stopped taking input, or a pointer that drifted is refused instead of clicked; a stale, moved, disappeared or non-visible target is refused, and a multi-click stops at the first press whose guard refuses and says how many went in. The move and the click are separate compositor calls, so a person moving the pointer in between is not detectable — the result says what happened and what could not be guaranteed.",
         approval: "mutating",
         input_schema: #{
             "type": "object",
@@ -102,19 +102,32 @@ pub async fn call(input) {
         Ok(m) => m,
         Err(e) => return Ok(refuse(`${e}`)),
     };
-    // The pointer took time to get there; the window is asked again before the button, so
-    // a window that moved or died in that window of time is refused with the pointer
-    // parked and nothing clicked.
-    let again = hypr_json(["-j", "clients"]).await?;
-    match check_target(again, address, expect) {
-        None => {}
-        Some(reason) => return Ok(refuse(`the pointer is at ${point.x},${point.y} and nothing was clicked: ${reason}`)),
-    }
 
-    let i = 0;
-    while i < count {
-        run_client(INPUT_POINTER, ["pointer", "click", button]).await?;
-        i += 1;
+    // The pointer took time to get there, and so does every press. Each press is guarded on its
+    // own — the monitors and the windows are read again, and the pointer's actual position with
+    // them — because the world can change between one press of a multi-click and the next, and
+    // because a guard that ran once says nothing about the screen a second press lands on.
+    let pressed = 0;
+    let stopped = "";
+    while pressed < count {
+        match revalidate_at_pointer(address, expect, point).await {
+            Ok(()) => {}
+            Err(reason) => {
+                stopped = reason;
+                break;
+            }
+        }
+        match run_client(INPUT_POINTER, ["pointer", "click", button]).await {
+            Ok(_) => pressed += 1,
+            Err(e) => {
+                stopped = `${e}`;
+                break;
+            }
+        }
+    }
+    // Nothing went in at all: this is the refusal it always was, in the same words.
+    if pressed == 0 {
+        return Ok(refuse(`the pointer is at ${point.x},${point.y} and nothing was clicked: ${stopped}`));
     }
 
     let after_clients = hypr_json(["-j", "clients"]).await?;
@@ -124,7 +137,13 @@ pub async fn call(input) {
         None => "",
     };
     let lines = [];
-    lines.push(`clicked ${button} ×${count} at layout ${point.x},${point.y} (window-relative ${point.local.x},${point.local.y}) in ${describe(w)}`);
+    if stopped == "" {
+        lines.push(`clicked ${button} ×${pressed} at layout ${point.x},${point.y} (window-relative ${point.local.x},${point.local.y}) in ${describe(w)}`);
+    } else {
+        // Some of the presses went in and the rest did not: saying "nothing happened" here
+        // would be false, and saying "clicked ×3" would be false the other way.
+        lines.push(`clicked ${button} ×${pressed} of ${count} at layout ${point.x},${point.y} (window-relative ${point.local.x},${point.local.y}) in ${describe(w)}, and then stopped before the next press: ${stopped}`);
+    }
     lines.push(`  pointer: ${moved.from.x},${moved.from.y} -> ${point.x},${point.y}`);
     if now == "" {
         lines.push(`  the window is gone from hyprctl clients now — it closed while it was being clicked`);
@@ -134,7 +153,7 @@ pub async fn call(input) {
         lines.push(`  the window is still the one that was inspected: ${now}`);
     }
     lines.push(`  focused now: ${after_active}`);
-    lines.push(`  what is not guaranteed: the move, the re-check and the button press are separate compositor calls, so a person moving the pointer or a window moving between them is not detectable from here — the pointer was confirmed at ${point.x},${point.y} immediately before the press. Focus follows the pointer under the operator's config (input:follow_mouse), so this click may also have put ${address} in front. The pointer is left where it is`);
+    lines.push(`  what is not guaranteed: the monitors, the windows and the pointer are read again immediately before every press, but those reads and the press are separate compositor calls, so a workspace switch or a person moving the pointer in the fraction of a second between the last read and the press is not detectable from here. Focus follows the pointer under the operator's config (input:follow_mouse), so this click may also have put ${address} in front. The pointer is left where it is`);
     Ok(join(lines, "\n"))
 }
 
@@ -587,6 +606,58 @@ async fn point_pointer_at(x, y, settle) {
         return Err(`the pointer was moved from ${from.x},${from.y} by ${dx},${dy} but the compositor says it is at ${to.x},${to.y}, not ${x},${y} — the caller's screen may be moving under it, so nothing was clicked or scrolled`);
     }
     Ok(#{ from: from, to: to })
+}
+
+// Everything that has to be true *at the instant* an input event goes out, read again right
+// before it, in one place: the window is still the one that was inspected, still mapped,
+// unhidden and taking input; the monitor it is on is still showing its workspace; the point is
+// still inside its rectangle; and the pointer is actually there.
+//
+// The checks made before the pointer moved are not enough for this. A window's fingerprint
+// carries its own workspace, so it does *not* change when an output switches the workspace it
+// shows — the window is the same window on the same workspace, and now it is nowhere on screen.
+// A click aimed at layout x,y would then land on whatever that output is showing at x,y instead.
+// Reading the monitors again is what catches it, and reading them here rather than once is what
+// makes a multi-press stop at the press whose world changed.
+//
+// These reads and the input event are still separate compositor calls, and no compositor
+// primitive here binds an event to a window (the input path is a virtual device; see the
+// plugin's README) — the answer says so rather than claiming the race is closed.
+async fn revalidate_at_pointer(address, expect, point) {
+    let monitors = hypr_json(["-j", "monitors"]).await?;
+    let clients = hypr_json(["-j", "clients"]).await?;
+    match check_target(clients, address, expect) {
+        None => {}
+        Some(reason) => return Err(reason),
+    }
+    let w = match find_window(clients, address) {
+        Some(w) => w,
+        None => return Err(`no window with address ${address} any more`),
+    };
+    if !bool_field(w, "mapped") {
+        return Err(`window ${address} is not mapped any more (withdrawn or still mapping)`);
+    }
+    if bool_field(w, "hidden") {
+        return Err(`window ${address} is hidden again: the compositor is not drawing it`);
+    }
+    if !bool_field(w, "acceptsInput") {
+        return Err(`window ${address} stopped accepting input`);
+    }
+    if !window_on_screen(monitors, w) {
+        let ws = workspace_of_window(w);
+        return Err(`the output showing this window switched away from workspace ${int_field(ws, "id")} while the pointer was moving, so ${address} is on screen nowhere now and ${point.x},${point.y} is not on it. hyprland_focus would switch to that workspace — a visible change this tool will not make on its own`);
+    }
+    let at = pair(w, "at");
+    let size = pair(w, "size");
+    if point.x < at[0] || point.y < at[1] || point.x >= at[0] + size[0] || point.y >= at[1] + size[1] {
+        return Err(`the point ${point.x},${point.y} is outside the window's ${size[0]}x${size[1]} at ${at[0]},${at[1]} now`);
+    }
+    let cursor = hypr_json(["-j", "cursorpos"]).await?;
+    let now = #{ x: int_field(cursor, "x"), y: int_field(cursor, "y") };
+    if now.x != point.x || now.y != point.y {
+        return Err(`the compositor says the pointer is at ${now.x},${now.y}, not ${point.x},${point.y} any more: it moved between the move and this instant`);
+    }
+    Ok(())
 }
 
 // Whichever window the compositor has focused, and whether it is the one aimed at.

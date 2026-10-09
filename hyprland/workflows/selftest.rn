@@ -7,7 +7,9 @@
 //
 // Cases: inspect, inspect-pinned, inspect-special, inspect-special-closed, visibility, click,
 // click-stale, click-gone, click-replaced, click-no-button, click-pointer-miss, click-hidden,
-// click-pinned, click-special-closed, scroll, scroll-hidden, type, type-not-focused,
+// click-pinned, click-special-closed, click-monitor-switch, click-monitor-switch-mid-count,
+// click-moved-midway, click-hidden-midway, click-unmapped-midway, click-input-refused-midway,
+// click-pointer-drift, scroll-monitor-switch, scroll, scroll-hidden, type, type-not-focused,
 // type-focus-first, type-control, type-hidden, key, key-bad-mod, key-hidden,
 // screenshot-monitor, screenshot-window, screenshot-region, screenshot-hidden,
 // screenshot-special-closed, tools-missing, focus-window, focus-workspace, focus-refused.
@@ -185,6 +187,50 @@ pub async fn run(input) {
             refused(out, bad, "a pointer that did not arrive is refused", got, "the compositor says it is at");
             refused(out, bad, "the refusal says nothing was clicked", got, "nothing was clicked or scrolled");
         }
+        return report(out, bad);
+    }
+
+    // The guard that runs immediately before an input event, against a world that changed while
+    // the pointer was moving. The monitors case is the one a fingerprint cannot answer: the
+    // window is the same window on the same workspace, and its output is showing another one, so
+    // the target is on screen nowhere and a click at its layout coordinates would land on
+    // whatever is at that place now.
+    if case == "click-monitor-switch" || case == "click-moved-midway"
+        || case == "click-hidden-midway" || case == "click-unmapped-midway"
+        || case == "click-input-refused-midway" || case == "click-pointer-drift" {
+        let got = call_tool("hyprland_click", #{ window: target.address, expect: target.fingerprint, x: 100, y: 50, button: "left" }).await;
+        refused(out, bad, "the guard before the press refuses and nothing was clicked", got, "nothing was clicked");
+        if case == "click-monitor-switch" {
+            refused(out, bad, "the refusal names the output that switched away from the workspace", got, "switched away from workspace 11");
+            refused(out, bad, "and points at the explicit way to switch", got, "hyprland_focus");
+        } else if case == "click-moved-midway" {
+            refused(out, bad, "a window that moved between the move and the press is refused", got, "is not the window that was inspected");
+        } else if case == "click-hidden-midway" {
+            refused(out, bad, "a target that became hidden is refused", got, "is hidden again");
+        } else if case == "click-unmapped-midway" {
+            refused(out, bad, "a target that stopped being mapped is refused", got, "is not mapped any more");
+        } else if case == "click-input-refused-midway" {
+            refused(out, bad, "a target that stopped taking input is refused", got, "stopped accepting input");
+        } else {
+            refused(out, bad, "a pointer that moved after it arrived is refused", got, "not 2034,119 any more");
+        }
+        return report(out, bad);
+    }
+
+    // Every press is guarded on its own, so a world that changes after the first press stops the
+    // rest — and the answer counts the presses that went in, because saying "nothing happened"
+    // would be false and saying "clicked three times" would be false the other way.
+    if case == "click-monitor-switch-mid-count" {
+        let got = call_tool("hyprland_click", #{ window: target.address, expect: target.fingerprint, x: 100, y: 50, button: "left", count: 3 }).await;
+        ok_with(out, bad, "the presses that went in are counted", got, "clicked left ×1 of 3");
+        ok_with(out, bad, "and the answer says why it stopped", got, "switched away from workspace 11");
+        return report(out, bad);
+    }
+
+    if case == "scroll-monitor-switch" {
+        let got = call_tool("hyprland_scroll", #{ window: target.address, expect: target.fingerprint, dy: 3 }).await;
+        refused(out, bad, "the guard before the scroll refuses when the output switched away", got, "switched away from workspace 11");
+        refused(out, bad, "and the refusal says nothing was scrolled", got, "nothing was scrolled");
         return report(out, bad);
     }
 
