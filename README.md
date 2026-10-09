@@ -12,6 +12,8 @@ installs the same way.
 |---|---|---|---|
 | [`browser/`](browser/) | `browser_open`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_read`, `browser_back`, `browser_state`; workflows `page_walk`, `page_watch` | `eidolon-browser`, a Rust service driving one headless Chromium | `eidolon plugins install dxcently/eidolon-plugins browser` — see its README for the service |
 | [`subagent/`](subagent/) | `subagent_spawn`, `subagent_pick`, `subagent_plan`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` (models picked per kind, formations, budgets, spend); workflows `fanout`, `door` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` |
+| [`hyprland/`](hyprland/) | `hyprland_inspect`, `hyprland_screenshot`, `hyprland_focus`, `hyprland_click`, `hyprland_scroll`, `hyprland_type`, `hyprland_key`; workflow `selftest` | Hyprland with a Lua config provider, and `grim`/`wlrctl`/`wtype` from `nix build .#hyprland` | `eidolon plugins install dxcently/eidolon-plugins hyprland`, then `eidolon plugins trust hyprland` |
+| [`librewolf/`](librewolf/) | `librewolf_status`, `librewolf_read`, `librewolf_structure`, `librewolf_detach` | LibreWolf with the plugin's bridge extension loaded, and the host binary it names — no service to start | `eidolon plugins install dxcently/eidolon-plugins librewolf`, then `eidolon plugins trust librewolf` — see its README |
 | [`jev/`](jev/) | automation graphs as workflows: `find-related`, `ctf-juice-recon`, `triage-linux`, `triage-wsl`, `triage-botforge`, `wiki-hop`, `selftest`; tools `jev_graph`, `jev_mark`, `jev_choose`, `jev_entail` and eleven one-command recon tools (`jev_os_release`, ... `jev_juice_robots`) | for the chooser graphs, the jev service (Python and torch, not shipped here) | `eidolon plugins install dxcently/eidolon-plugins jev`, then `eidolon plugins trust jev` |
 
 All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
@@ -62,10 +64,21 @@ Upstream eidolon without the plugin runtime wants the flat install instead:
 (`browser_open.rn`, …). That layout is in this repo's history before the plugin
 port; the two do not share tool filenames.
 
+## Libraries
+
+[`libs/`](libs/) is the library home: Rune libraries shared **at source**.
+A plugin's manifest may declare one by repo, path, and content sha256 — the
+house pin spelling — and `eidolon plugins install` vendors a verified copy
+into the plugin's own `lib/`, where the run pin covers it like any other
+Rune the plugin ships. See [libs/README.md](libs/README.md); the working
+fixture is [`tests/libsfixture/`](tests/libsfixture/).
+
 ## Building
 
 ```bash
 nix build .#browser          # the service, with Chromium from nixpkgs
+nix build .#hyprland         # grim + wlrctl + wtype for the hyprland plugin
+nix build .#librewolf        # the host LibreWolf spawns for the librewolf plugin
 nix develop                  # cargo, clippy, chromium; `cargo test` runs the real-browser tests too
 cargo test                   # without Nix: unit tests, plus browser tests if EIDOLON_BROWSER_CHROME is set
 ```
