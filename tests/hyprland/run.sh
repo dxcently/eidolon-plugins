@@ -163,6 +163,26 @@ wlrctl pointer click left"
     click-pointer-miss)
         expect_input "wlrctl pointer move 886 -243"
         ;;
+    # The guard before the press: the pointer moved and nothing else did. A world that changed in
+    # between must leave the pointer move alone in the log and no button pressed.
+    click-monitor-switch | click-moved-midway | click-hidden-midway | click-unmapped-midway | click-input-refused-midway | click-pointer-drift)
+        expect_input "wlrctl pointer move 886 -243"
+        expect_no_grim
+        expect_no_dispatch
+        ;;
+    scroll-monitor-switch)
+        expect_input "wlrctl pointer move 1732 205"
+        expect_no_grim
+        expect_no_dispatch
+        ;;
+    # A multi-click stops at the press whose guard refuses: the presses that went in are in the
+    # log, and no more.
+    click-monitor-switch-mid-count)
+        expect_input "wlrctl pointer move 886 -243
+wlrctl pointer click left"
+        expect_no_grim
+        expect_no_dispatch
+        ;;
     scroll)
         expect_input "wlrctl pointer move 1732 205
 wlrctl pointer scroll 3 0"
