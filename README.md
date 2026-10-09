@@ -16,6 +16,12 @@ installs the same way.
 | [`librewolf/`](librewolf/) | `librewolf_status`, `librewolf_read`, `librewolf_structure`, `librewolf_detach` | LibreWolf with the plugin's bridge extension loaded, and the host binary it names — no service to start | `eidolon plugins install dxcently/eidolon-plugins librewolf`, then `eidolon plugins trust librewolf` — see its README |
 | [`jev/`](jev/) | automation graphs as workflows: `find-related`, `ctf-juice-recon`, `triage-linux`, `triage-wsl`, `triage-botforge`, `wiki-hop`, `selftest`; tools `jev_graph`, `jev_mark`, `jev_choose`, `jev_entail` and eleven one-command recon tools (`jev_os_release`, ... `jev_juice_robots`) | for the chooser graphs, the jev service (Python and torch, not shipped here) | `eidolon plugins install dxcently/eidolon-plugins jev`, then `eidolon plugins trust jev` |
 
+**`claude/`** is the driver host: the half of an external-CLI driver that runs beside a
+session and owns the CLI. It ships no verbs — a driver has nothing to type — so it is
+installed for its service rather than trusted, and it is **not upstream yet**: it lives on
+`noah427/eidolon-plugins`, a fork, with an open pull request. See
+[its README](claude/README.md).
+
 All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
 
 **Web search** isn't here on purpose: eidolon ships it as the built-in

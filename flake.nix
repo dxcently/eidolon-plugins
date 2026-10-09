@@ -18,6 +18,7 @@
         browser = pkgs.callPackage ./browser/package.nix { };
         hyprland = pkgs.callPackage ./hyprland/package.nix { };
         librewolf = pkgs.callPackage ./librewolf/package.nix { };
+        claude = pkgs.callPackage ./claude/package.nix { };
         default = browser;
       });
 
