@@ -17,9 +17,18 @@ rustPlatform.buildRustPackage {
       ../Cargo.toml
       ../Cargo.lock
       ./service
+      # The workspace has more than one member; cargo loads every member's
+      # manifest, so each package's source has to carry all of them.
+      ../librewolf/service
+      ../claude/service
     ];
   };
   cargoLock.lockFile = ../Cargo.lock;
+
+  # The workspace has more than one member. Without this, `cargo build` builds every
+  # member and `$out/bin` ships both binaries: `nix build .#librewolf` would carry
+  # eidolon-browser, and `.#browser` would carry this one. One package, one program.
+  cargoBuildFlags = [ "-p" "eidolon-browser" ];
 
   nativeBuildInputs = [ makeWrapper ];
 

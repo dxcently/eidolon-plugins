@@ -1,0 +1,20 @@
+// The plugin manifest for `librewolf` — the directory's name is the namespace
+// every verb it ships is registered under (`librewolf_status`, ...), so this file
+// says only what the plugin says about itself.
+pub fn manifest() {
+    #{
+        name: "librewolf",
+        version: "0.1.0",
+        description: "read the one tab a person attaches in their own LibreWolf session, by clicking the extension's toolbar button on it",
+        // No `service:` block, on purpose. The process that has to be running is
+        // the native messaging host LibreWolf spawns because the extension names
+        // it — and `eidolon plugins service start` cannot start a browser. What
+        // this plugin reuses from the rest of the repo is the token, the
+        // `api_request` endpoint and the "answers with the reason it isn't there"
+        // error; the plugin's README says what an operator has to do instead.
+        claims: #{
+            tools: ["status", "read", "structure", "detach"],
+            grants: ["file:~/.config/eidolon/librewolf.token"],
+        },
+    }
+}
