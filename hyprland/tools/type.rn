@@ -67,6 +67,7 @@ pub async fn call(input) {
     }
 
     let expect = word(input, "expect");
+    let monitors = hypr_json(["-j", "monitors"]).await?;
     let clients = hypr_json(["-j", "clients"]).await?;
     match check_target(clients, address, expect) {
         None => {}
@@ -82,7 +83,10 @@ pub async fn call(input) {
     if !bool_field(w, "acceptsInput") {
         return Ok(refuse(`window ${address} does not accept input right now, so the keys would go nowhere`));
     }
-    if !bool_field(w, "visible") {
+    if bool_field(w, "hidden") {
+        return Ok(refuse(`window ${address} is hidden: the compositor is not drawing it, so nothing can hold the keyboard focus there`));
+    }
+    if !window_on_screen(monitors, w) {
         let ws = workspace_of_window(w);
         return Ok(refuse(`window ${address} is on workspace ${int_field(ws, "id")}, which no output is showing: nothing can hold the keyboard focus there, so no text can reach it. hyprland_focus would switch to it — a visible change this tool will not make on its own`));
     }
@@ -275,6 +279,95 @@ fn workspace_of_window(w) {
     match w.get("workspace") {
         Some(v) => v,
         None => #{},
+    }
+}
+
+// Whether an output is showing this workspace right now. hyprctl's workspace records carry no
+// `visible` field at all (Hyprland 0.56 prints id, name, monitor, monitorID, windows,
+// hasfullscreen, lastwindow, lastwindowtitle, ispersistent, tiledLayout), so it has to be
+// worked out from the monitors: a workspace is on a screen when it is an enabled output's
+// active workspace, or the special workspace that output has open — specials are named
+// `special:<name>` and the monitor reports that same name, which is how the two are matched.
+// This is the compositor's own rule (CWorkspace::isVisibleNotCovered), and an open special does
+// not stop the workspace underneath it from being shown: opening one never clears the other's
+// visible flag (Monitor::setSpecialWorkspace), so both answer true here.
+fn shown_by(monitors, ws) {
+    let id = int_field(ws, "id");
+    let name = str_field(ws, "name");
+    for m in monitors {
+        if bool_field(m, "disabled") {
+            continue;
+        }
+        match m.get("activeWorkspace") {
+            Some(a) => {
+                if id > 0 && int_field(a, "id") == id {
+                    return Some(str_field(m, "name"));
+                }
+            }
+            None => {}
+        }
+        match m.get("specialWorkspace") {
+            Some(s) => {
+                if name != "" && str_field(s, "name") == name {
+                    return Some(str_field(m, "name"));
+                }
+            }
+            None => {}
+        }
+    }
+    None
+}
+
+fn workspace_shown(monitors, ws) {
+    match shown_by(monitors, ws) {
+        Some(name) => name != "",
+        None => false,
+    }
+}
+
+// A special workspace is the compositor's own id range for one (WorkspaceQueryCore: ids from
+// SPECIAL_WORKSPACE_START, -99, up to -2), not a field hyprctl reports.
+fn is_special_workspace(ws) {
+    let id = int_field(ws, "id");
+    id >= -99 && id <= -2
+}
+
+fn monitor_by_id(monitors, id) {
+    for m in monitors {
+        if int_field(m, "id") == id {
+            return Some(m);
+        }
+    }
+    None
+}
+
+// Whether the window is on a screen right now — which is *not* what hyprctl's per-window
+// `visible` says. Upstream defines that one as `!m_hidden && m_isMapped && surface &&
+// visibleByAlpha()` (CWindow::visible): it describes the window's own surface inside its
+// workspace, not which workspace an output is showing. Measured on this session (Hyprland
+// 0.56), a mapped, unhidden window on a workspace no output is showing answers
+// `visible: true` — so it cannot be used to decide whether acting on it would land on what is
+// on screen. On screen means: mapped, not hidden, and either the window's workspace is one an
+// output is showing, or the window is pinned — a pinned window is rendered on whatever
+// workspace its output is showing, whatever its own workspace field says
+// (IHyprRenderer::shouldRenderWindow returns true for a pinned window). Neither this nor
+// anything else here accounts for occlusion: a window behind a fullscreen one is reported on
+// screen, and the capture and input verbs say in their answers that they cannot bind to a
+// window.
+fn window_on_screen(monitors, w) {
+    if !bool_field(w, "mapped") {
+        return false;
+    }
+    if bool_field(w, "hidden") {
+        return false;
+    }
+    if bool_field(w, "pinned") {
+        match monitor_by_id(monitors, int_field(w, "monitor")) {
+            Some(m) => !bool_field(m, "disabled"),
+            None => false,
+        }
+    } else {
+        workspace_shown(monitors, workspace_of_window(w))
     }
 }
 

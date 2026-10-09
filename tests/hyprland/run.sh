@@ -68,7 +68,11 @@ open(sys.argv[2], "w").write(f"{c['x']} {c['y']}\n")
 PY
     args='{"case":"'"$case"'"}'
     case "$case" in
-    click-hidden | screenshot-hidden) args='{"case":"'"$case"'","class":"hidden-app"}' ;;
+    click-hidden | screenshot-hidden | scroll-hidden | type-hidden | key-hidden)
+        args='{"case":"'"$case"'","class":"hidden-app"}' ;;
+    click-pinned) args='{"case":"'"$case"'","class":"pinned-app"}' ;;
+    click-special-closed | screenshot-special-closed)
+        args='{"case":"'"$case"'","class":"scratch-app"}' ;;
     esac
 
     if [ "$case" = "tools-missing" ]; then
@@ -131,7 +135,7 @@ PY
 
     shot=/tmp/eidolon-hyprland
     case "$case" in
-    inspect)
+    inspect | inspect-pinned | inspect-special | inspect-special-closed | visibility)
         expect_no_input
         expect_no_grim
         expect_no_dispatch
@@ -142,8 +146,19 @@ wlrctl pointer click left"
         expect_no_grim
         expect_no_dispatch
         ;;
-    click-no-button | click-stale | click-gone | click-replaced | click-hidden)
+    click-pinned)
+        expect_input "wlrctl pointer move 886 -243
+wlrctl pointer click left"
+        expect_no_grim
+        expect_no_dispatch
+        ;;
+    click-no-button | click-stale | click-gone | click-replaced | click-hidden | click-special-closed)
         expect_no_input
+        expect_no_dispatch
+        ;;
+    scroll-hidden | type-hidden | key-hidden)
+        expect_no_input
+        expect_no_dispatch
         ;;
     click-pointer-miss)
         expect_input "wlrctl pointer move 886 -243"
@@ -177,8 +192,9 @@ wlrctl pointer scroll 3 0"
     screenshot-region)
         expect_grim "grim -g 2034,119 100x50 $shot/window-0x562e1ac89e30.png"
         ;;
-    screenshot-hidden)
+    screenshot-hidden | screenshot-special-closed)
         expect_no_grim
+        expect_no_dispatch
         ;;
     tools-missing)
         expect_no_input

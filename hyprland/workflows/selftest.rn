@@ -5,16 +5,17 @@
 // hidden, is not focused — and the harness is what reads the fake clients' logs afterwards
 // to prove that a refusal injected nothing.
 //
-// Cases: inspect, click, click-stale, click-gone, click-replaced, click-no-button,
-// click-pointer-miss, click-hidden, scroll, type, type-not-focused, type-focus-first,
-// type-control, key, key-bad-mod, screenshot-monitor, screenshot-window,
-// screenshot-region, screenshot-hidden, tools-missing, focus-window, focus-workspace,
-// focus-refused.
+// Cases: inspect, inspect-pinned, inspect-special, inspect-special-closed, visibility, click,
+// click-stale, click-gone, click-replaced, click-no-button, click-pointer-miss, click-hidden,
+// click-pinned, click-special-closed, scroll, scroll-hidden, type, type-not-focused,
+// type-focus-first, type-control, type-hidden, key, key-bad-mod, key-hidden,
+// screenshot-monitor, screenshot-window, screenshot-region, screenshot-hidden,
+// screenshot-special-closed, tools-missing, focus-window, focus-workspace, focus-refused.
 
 pub fn workflow() {
     #{
         name: "selftest",
-        description: "Check the hyprland tools against fixed compositor answers: observation, focus, and every refusal (stale, moved, replaced, gone, hidden, unfocused, missing input client). Needs fake hyprctl/grim/wlrctl/wtype first on PATH; tests/hyprland/run.sh sets that up, one case per run. Completes if every check holds, fails naming the ones that do not.",
+        description: "Check the hyprland tools against fixed compositor answers: observation (including the visibility the compositor's own fields do not answer — off-workspace, pinned and special), focus, and every refusal (stale, moved, replaced, gone, off screen, unfocused, missing input client). Needs fake hyprctl/grim/wlrctl/wtype first on PATH; tests/hyprland/run.sh sets that up, one case per run. The `visibility` case reads nothing but hyprland_inspect, so it also runs against a live session (tests/hyprland/check-live.sh). Completes if every check holds, fails naming the ones that do not.",
         approval: "read_only",
         params: #{
             "type": "object",
@@ -55,27 +56,101 @@ pub async fn run(input) {
         None => return fatal(`no window of class ${class} in the fixture: ${window_classes(windows)}`),
     };
 
-    if case == "inspect" {
+    if case == "inspect" || case == "inspect-pinned" || case == "inspect-special"
+        || case == "inspect-special-closed" {
         let want = match input.get("expect_windows") {
             Some(n) => if n is i64 { n } else { 3 },
             None => 3,
         };
         check(out, bad, "inspect sees every window", windows.len(), want);
         check(out, bad, "inspect sees both monitors", seen.monitors.len(), 2);
-        check(out, bad, "a window carries the layout rect it is on", target.rect, "1934,69 1892x997");
-        check(out, bad, "geometry is in layout coordinates, one space for every tool", target.at.x, 1934);
-        check(out, bad, "the focused window is marked", target.focused, true);
-        check(out, bad, "the active address is the focused one", seen.active, target.address);
         check(out, bad, "the cursor position is read", seen.cursor.x, 1148);
-        check(out, bad, "the fingerprint has identity, workspace and geometry", target.fingerprint.split("|").collect::<Vec>().len(), 7);
-        check(out, bad, "the fingerprint names the window's own process", target.fingerprint.contains(`${target.pid}`), true);
-        check(out, bad, "the hidden window is reported as not visible", match window_by_class(windows, "hidden-app") {
-            Some(h) => h.visible,
-            None => "missing",
-        }, false);
-        check(out, bad, "the second monitor's scale and transform are reported", monitor_named(seen.monitors, "DP-2").scale, 2.0);
-        check(out, bad, "the second monitor's transform is reported", monitor_named(seen.monitors, "DP-2").transform, 1);
-        check(out, bad, "a workspace nobody is showing is reported as not visible", workspace_named(seen.workspaces, "12").visible, false);
+        if case == "inspect" {
+            check(out, bad, "a window carries the layout rect it is on", target.rect, "1934,69 1892x997");
+            check(out, bad, "geometry is in layout coordinates, one space for every tool", target.at.x, 1934);
+            check(out, bad, "the focused window is marked", target.focused, true);
+            check(out, bad, "the active address is the focused one", seen.active, target.address);
+            check(out, bad, "the fingerprint has identity, workspace and geometry", target.fingerprint.split("|").collect::<Vec>().len(), 7);
+            check(out, bad, "the fingerprint names the window's own process", target.fingerprint.contains(`${target.pid}`), true);
+            check(out, bad, "the second monitor's scale and transform are reported", monitor_named(seen.monitors, "DP-2").scale, 2.0);
+            check(out, bad, "the second monitor's transform is reported", monitor_named(seen.monitors, "DP-2").transform, 1);
+            // The world is the compositor's own shape, and this is what that means: the fields
+            // upstream really sends, `visible` among them, saying what upstream really says.
+            check(out, bad, "a workspace the first output is showing is visible", workspace_named(seen.workspaces, "1").visible, true);
+            check(out, bad, "a workspace the second output is showing is visible", workspace_named(seen.workspaces, "11").visible, true);
+            check(out, bad, "a workspace nobody is showing is reported as not visible", workspace_named(seen.workspaces, "12").visible, false);
+            check(out, bad, "an ordinary workspace is not called special", workspace_named(seen.workspaces, "12").special, false);
+            let hidden = match window_by_class(windows, "hidden-app") {
+                Some(h) => h,
+                None => return fatal("no window of class hidden-app in the fixture"),
+            };
+            check(out, bad, "the fixture keeps the compositor's own visible field", hidden.compositor_visible, true);
+            check(out, bad, "so the window on a workspace nobody is showing is not visible", hidden.visible, false);
+            check(out, bad, "and it is still mapped, unhidden and unpinned", `${hidden.mapped}/${hidden.hidden}/${hidden.pinned}`, "true/false/false");
+        }
+        if case == "inspect-pinned" {
+            let pinned = match window_by_class(windows, "pinned-app") {
+                Some(w) => w,
+                None => return fatal("no window of class pinned-app in the fixture"),
+            };
+            check(out, bad, "the workspace a pinned window is on is still not visible", workspace_named(seen.workspaces, "12").visible, false);
+            check(out, bad, "the compositor calls the pinned window visible", pinned.compositor_visible, true);
+            check(out, bad, "a pinned window is reported as pinned", pinned.pinned, true);
+            check(out, bad, "and it is on screen anyway: a pinned window follows its output", pinned.visible, true);
+        }
+        if case == "inspect-special" {
+            let ws = workspace_named(seen.workspaces, "special:scratch");
+            check(out, bad, "the open special workspace is visible", ws.visible, true);
+            check(out, bad, "a special workspace is reported as special", ws.special, true);
+            check(out, bad, "the monitor names the special workspace it is showing", monitor_named(seen.monitors, "DP-2").special_workspace, "special:scratch");
+            check(out, bad, "the workspace underneath an open special is still shown", workspace_named(seen.workspaces, "11").visible, true);
+            check(out, bad, "a window on the open special workspace is on screen", match window_by_class(windows, "scratch-app") {
+                Some(w) => w.visible,
+                None => "missing",
+            }, true);
+        }
+        if case == "inspect-special-closed" {
+            let ws = workspace_named(seen.workspaces, "special:scratch");
+            check(out, bad, "a special workspace nobody has open is not visible", ws.visible, false);
+            check(out, bad, "it is still reported as special", ws.special, true);
+            check(out, bad, "the monitor says no special workspace is open", monitor_named(seen.monitors, "DP-2").special_workspace, "");
+            check(out, bad, "a window on it is off screen", match window_by_class(windows, "scratch-app") {
+                Some(w) => w.visible,
+                None => "missing",
+            }, false);
+        }
+        return report(out, bad);
+    }
+
+    if case == "visibility" {
+        // The same rule the tools use, worked out again from the monitors inspect itself
+        // reported — so this case says the same thing in the fixture world and against a live
+        // session (tests/hyprland/check-live.sh runs this one case live).
+        let disagree = [];
+        for ws in seen.workspaces {
+            if ws.visible != derived_workspace_visible(seen.monitors, ws) {
+                disagree.push(`workspace ${ws.name} ${ws.visible} vs ${derived_workspace_visible(seen.monitors, ws)}`);
+            }
+        }
+        for w in seen.windows {
+            if w.visible != derived_window_visible(seen.monitors, w) {
+                disagree.push(`window ${w.address} ${w.visible} vs ${derived_window_visible(seen.monitors, w)}`);
+            }
+        }
+        check(out, bad, "every record's visibility is what the monitors say", disagree.len(), 0);
+        if disagree.len() > 0 {
+            out.push(`     ${join(disagree, "; ")}`);
+        }
+        // What the derivation exists for: windows the compositor's own field calls visible that
+        // no output is showing. They are reported, not asserted — a session where every window
+        // happens to be on the workspace on screen has none, and that is not a failure.
+        let off = [];
+        for w in seen.windows {
+            if w.compositor_visible && !w.visible {
+                off.push(`${w.class} on workspace ${w.workspace.id}`);
+            }
+        }
+        out.push(`note: ${off.len()} window(s) the compositor's own visible calls visible that no output is showing: ${join(off, ", ")}`);
         return report(out, bad);
     }
 
@@ -119,6 +194,42 @@ pub async fn run(input) {
             None => return fatal(`no window of class ${class} in the fixture`),
         };
         let got = call_tool("hyprland_click", #{ window: hidden.address, expect: hidden.fingerprint, x: 5, y: 5, button: "left" }).await;
+        refuted_hidden(out, bad, got);
+        return report(out, bad);
+    }
+
+    // A pinned window is on screen on whatever workspace its output is showing, so aiming at it
+    // is not the off-screen case and must go through.
+    if case == "click-pinned" {
+        let pinned = match window_by_class(windows, class) {
+            Some(w) => w,
+            None => return fatal(`no window of class ${class} in the fixture`),
+        };
+        let got = call_tool("hyprland_click", #{ window: pinned.address, expect: pinned.fingerprint, x: 100, y: 50, button: "left" }).await;
+        ok_with(out, bad, "a pinned window on a workspace nobody is showing is clickable", got, "clicked left ×1 at layout 2034,119");
+        ok_with(out, bad, "the answer says where the pointer came from", got, "pointer: 1148,362 -> 2034,119");
+        return report(out, bad);
+    }
+
+    // Every other verb that aims at a window refuses a target no output is showing — the same
+    // refusal, in each tool's own words. The harness asserts that nothing was injected.
+    if case == "click-special-closed" || case == "scroll-hidden" || case == "type-hidden"
+        || case == "key-hidden" || case == "screenshot-special-closed" {
+        let away = match window_by_class(windows, class) {
+            Some(w) => w,
+            None => return fatal(`no window of class ${class} in the fixture`),
+        };
+        let got = if case == "click-special-closed" {
+            call_tool("hyprland_click", #{ window: away.address, expect: away.fingerprint, x: 5, y: 5, button: "left" }).await
+        } else if case == "scroll-hidden" {
+            call_tool("hyprland_scroll", #{ window: away.address, expect: away.fingerprint, dy: 3 }).await
+        } else if case == "type-hidden" {
+            call_tool("hyprland_type", #{ window: away.address, expect: away.fingerprint, text: text }).await
+        } else if case == "key-hidden" {
+            call_tool("hyprland_key", #{ window: away.address, expect: away.fingerprint, key: "Escape" }).await
+        } else {
+            call_tool("hyprland_screenshot", #{ target: "window", window: away.address, expect: away.fingerprint }).await
+        };
         refuted_hidden(out, bad, got);
         return report(out, bad);
     }
@@ -303,6 +414,43 @@ fn window_classes(windows) {
         names.push(w.class);
     }
     join(names, ", ")
+}
+
+// The rule the tools derive visibility with, worked out again from the monitors
+// hyprland_inspect itself reported: a workspace is shown when it is an enabled output's active
+// workspace or the special workspace that output has open, and a window is on screen when it is
+// mapped, unhidden and either on such a workspace or pinned to such an output. Read from the
+// same upstream behaviour (CWorkspace::isVisibleNotCovered, IHyprRenderer::shouldRenderWindow)
+// but from the records, so it checks them rather than copying the code that made them — and it
+// is what makes the `visibility` case mean the same thing against a live session.
+fn derived_workspace_visible(monitors, ws) {
+    for m in monitors {
+        if m.disabled {
+            continue;
+        }
+        if m.active_workspace.id > 0 && m.active_workspace.id == ws.id {
+            return true;
+        }
+        if ws.name != "" && m.special_workspace == ws.name {
+            return true;
+        }
+    }
+    false
+}
+
+fn derived_window_visible(monitors, w) {
+    if !w.mapped || w.hidden {
+        return false;
+    }
+    if w.pinned {
+        for m in monitors {
+            if m.id == w.monitor && !m.disabled {
+                return true;
+            }
+        }
+        return false;
+    }
+    derived_workspace_visible(monitors, w.workspace)
 }
 
 fn monitor_named(monitors, name) {

@@ -14,6 +14,10 @@ failure prints what was expected, what the tool answered, and the run's report.
 - `run.sh` — the harness. Refuses unless HOME and XDG_CONFIG_HOME are throwaway
   (`guard.sh`), copies the plugin into that config, vouches for it there, and runs one
   case of the plugin's `selftest` workflow with the fakes first on PATH.
+- `check-live.sh` — one case, `visibility`, against the session that is really running. It is
+  read-only (`hyprland_inspect` and the `hyprctl -j` calls behind it: no input client, no
+  capture, no dispatcher), and it makes its own throwaway config, so the installed plugin is
+  left alone.
 - `stubs/` — `hyprctl`, `grim`, `wlrctl` and `wtype`. They answer from the scenario
   directory and record what they were asked for; they talk to no compositor and no device.
   The fake `wlrctl` refuses a `pointer click` with no explicit button and writes `BAD` to
@@ -22,7 +26,12 @@ failure prints what was expected, what the tool answered, and the run's report.
   a window at layout `1934,69`, a second window behind it, and a third on a workspace no
   output is showing. `<what>.<n>.json` is the answer to the n-th call of that command, so a
   case spells out only what changes (the window that moved between the inspection and the
-  click).
+  click). The records are the shape Hyprland 0.56 really answers with, which is the point of
+  the visibility cases: a workspace record has no `visible` and no `special` field at all, and
+  a window record's `visible` is about its own surface — a mapped, unhidden window on a
+  workspace no output is showing really answers `true`, and the worlds here say exactly that.
+  Two more shapes follow from it: a pinned window on a workspace nobody is showing (on screen
+  all the same), and a special workspace, open on a monitor and then shut again.
 
 The environment is the point of the harness: `WAYLAND_DISPLAY`, `DISPLAY`,
 `HYPRLAND_INSTANCE_SIGNATURE` and `XDG_SESSION_TYPE` are removed and PATH is stubs-first

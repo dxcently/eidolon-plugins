@@ -90,11 +90,25 @@ HOME=$t XDG_CONFIG_HOME=$t/cfg XDG_STATE_HOME=$t/state XDG_DATA_HOME=$t/data \
 
 Every case prints `ok <name>` and the last line is `ok   every case`. The cases cover the
 refusals as much as the successes: a window that moved, died or had its address reused
-between the inspection and the click; a target on a workspace nobody is showing; typing at
-a window that is not focused; a missing button; an input client that is not installed; a
-pointer that did not arrive; and the one invocation that must never be constructed — a
-bare `pointer click`, which `wlrctl`'s own CLI turns into a left click. The fake `wlrctl`
-fails the run if it ever sees one.
+between the inspection and the click; a target on a workspace nobody is showing (and the
+same target pinned, or on a special workspace an output has open, which are on screen and
+are not refused); typing at a window that is not focused; a missing button; an input client
+that is not installed; a pointer that did not arrive; and the one invocation that must never
+be constructed — a bare `pointer click`, which `wlrctl`'s own CLI turns into a left click.
+The fake `wlrctl` fails the run if it ever sees one.
+
+One case is about what the compositor itself answers rather than about the plugin's logic:
+`visibility` reads nothing but `hyprland_inspect` and re-derives every record's visibility
+from the monitors that inspection reported. It runs in the suite above and, unchanged, against
+the session that is really running:
+
+```bash
+bash tests/hyprland/check-live.sh
+```
+
+That one is read-only — `hyprland_inspect` and the `hyprctl -j` calls behind it, no input
+client, no capture, no dispatcher — and it copies the plugin into a throwaway config, so the
+installed tree is neither used nor touched.
 
 On a real session, read-only and safe to run:
 
@@ -119,9 +133,25 @@ what "verified" means here.
 - **Typing is a check, not a lock.** The focused window is read before and after; a focus
   that moved mid-text is reported as an error, since part of the text may have gone
   elsewhere.
+- **A chord releases its modifiers explicitly.** `hyprland_key` presses each modifier, sends the
+  key, then releases each modifier by name (`wtype -M ctrl -k a -m ctrl`) inside the one client
+  invocation. It is not left to the client's exit: `wtype`'s only modifier call is the one
+  `-M`/`-m` asks for, and closing the virtual keyboard does not reset the seat's modifier state —
+  so a `-M` with no `-m` leaves the modifier down, and the *next* pointer event, this plugin's own
+  included, carries it. A live probe's event log shows exactly that: a click and a wheel sent after
+  a `ctrl+a` chord both arrived with `BUTTON_CTRL` set.
 - **A window capture is a crop of the visible desktop.** `grim -T` wants a foreign-toplevel
   identifier and no Hyprland address maps to one, so a window is captured as its rectangle:
   anything overlapping it appears as it does on screen.
+- **`visible` means on a screen now, and it is derived — it is not the compositor's own field.**
+  hyprctl's workspace records have no `visible` at all, and its per-window `visible` is about the
+  window's own surface (`!hidden && mapped && …` upstream): a mapped, unhidden window on a
+  workspace nobody is showing really answers `true`. So visibility is worked out from the
+  monitors — a workspace is shown when it is an enabled output's active workspace or the special
+  workspace that output has open, and a window is on screen when it is mapped, unhidden, and
+  either on such a workspace or pinned to such an output. hyprctl's own value is reported beside
+  it as `compositor_visible`, and every verb that aims at a window refuses a target that is not
+  on a screen.
 - **A hidden workspace cannot be captured at all** — a compositor renders only what is
   showing. The tool refuses and names `hyprland_focus`, which switches to it on purpose and
   says so, instead of switching silently.
