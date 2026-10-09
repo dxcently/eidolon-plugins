@@ -119,13 +119,22 @@ because library tests run inside a runtime and could not see it.
 
 **Published in a fork, with an open pull request — not upstream.** The plugin lives
 at `noah427/eidolon-plugins`, a fork of `dxcently/eidolon-plugins`, on the branch
-`plugins/claude-and-librewolf`. It is installable from there today:
+`plugins/claude-and-librewolf`. It is installable from there today, and **the ref is required** — the branch is not the
+fork's default, and an install with no `--ref` fetches `main`, which does not carry this:
 
 ```sh
-eidolon plugins install noah427/eidolon-plugins claude
+eidolon plugins install noah427/eidolon-plugins claude --ref plugins/claude-and-librewolf
+# or pinned to the exact commit, which cannot move:
+#   eidolon plugins install noah427/eidolon-plugins claude --ref 2885d0166580d7417b089d10f335eabad83ce7e4
+
 eidolon plugins service approve claude     # the step that matters; there are no verbs to trust
 eidolon plugins service start claude
 ```
+
+Measured, both ways, in an isolated config: without `--ref` it answers
+`nothing installed from noah427/eidolon-plugins at main`; with it, it records
+`installed from noah427/eidolon-plugins#claude@plugins/claude-and-librewolf (2885d01)`
+and the listing says `record managed`.
 
 `dxcently/eidolon-plugins` does not carry it yet: nothing here is merged, and the pull
 request is the thing that would change that. Until it is merged, `noah427` is the source

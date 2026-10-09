@@ -19,7 +19,8 @@ installs the same way.
 **`claude/`** is the driver host: the half of an external-CLI driver that runs beside a
 session and owns the CLI. It ships no verbs — a driver has nothing to type — so it is
 installed for its service rather than trusted, and it is **not upstream yet**: it lives on
-`noah427/eidolon-plugins`, a fork, with an open pull request. See
+`noah427/eidolon-plugins`, a fork, with an open pull request — and its install needs an
+explicit `--ref`, because the branch is not that fork's default. See
 [its README](claude/README.md).
 
 All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
