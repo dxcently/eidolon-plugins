@@ -11,8 +11,11 @@ doors: the `PreToolUse` hook for own-tools mode and an MCP server for registry
 mode. In registry mode the host executes nothing — `tools/list` answers from the
 list the session pushed with the turn, and `tools/call` asks the session, which
 runs it under its own gate. What is *not* verified is a real CLI: the adapter has
-only ever run against the fake one in this repo's tests. Nothing here reads a
-credential, spends anything, or reaches the network.
+only ever run against the fake one in this repo's tests, and **that sentence is about those
+tests, not about the plugin in use.** A host started with `--real` spawns a real vendor CLI,
+which authenticates as you and reaches the network as you — that is what it is for. This
+plugin reads no credential *itself* and holds none; what it spawns is a different claim, and
+the one to keep in view.
 
 **Why each rule is what it is** is written where the rule is — beside it in
 `service/src/*.rs`, in the section the rule belongs to — rather than in a document
@@ -106,6 +109,55 @@ A related defect was real and measured: binding a *tokio* listener outside the
 runtime panicked after creating the file and left the socket at `0755`, the
 `chmod` never reached at all. The test that pins this drives the real binary,
 because library tests run inside a runtime and could not see it.
+
+## The service is a demo; a real turn is this
+
+**Read this before installing.** `plugin.rn` declares the service as
+
+```rune
+command: "eidolon-claude",
+```
+
+which is the **fake backend**. It answers the readiness probe and scripts a turn: it reads
+no prompt, spawns nothing, and runs nothing. `service start` therefore proves the transport,
+the handshake and the readiness — and **not** a working driver. Nothing has been changed to
+make that read as more than it is; the default is deliberately the backend that cannot do
+harm.
+
+A real turn is the same binary with `--real`, run by hand, in its own terminal:
+
+```sh
+# 1. the demo service holds the socket; stop it.
+eidolon plugins service stop claude
+
+# 2. the host on the real CLI, in the foreground of a dedicated terminal, so you can
+#    see what it says and stop it with ^C. `--cli` defaults to `claude`; name a path to
+#    use another. --health-port 0 skips the readiness port, which nothing needs here.
+eidolon-claude --real --socket "${XDG_RUNTIME_DIR:-/tmp}/eidolon-claude.sock" --health-port 0
+
+# 3. and the session side, in ${XDG_CONFIG_HOME:-$HOME/.config}/eidolon/config.toml.
+#    The socket must be the one above, and the backend string must be the one the host
+#    declares (its `hello` says it; `claude-cli` is the default).
+[[driver]]
+backend = "claude-cli"
+socket  = "/run/user/1000/eidolon-claude.sock"   # ← your $XDG_RUNTIME_DIR
+mode    = "registry"          # or "own_tools" — see the mode section below
+models  = ["claude-*"]
+
+# 4. a turn. `--provider` takes the backend's bare name, and is what selects the driver.
+eidolon run --provider claude-cli "hello"
+```
+
+Two things to know about the pairing. `mode` must be one the host offers — `registry` needs
+no rows in your `policy.rn`, `own_tools` does (see the section below). And the socket in the
+config has to be the socket the host bound; a mismatch is reported as
+`connecting to the driver host at … / No such file or directory`, which is the same answer a
+host that is not running gives.
+
+**What was verified with this recipe:** every step, with `--cli` pointing at the repository's
+**fake** CLI fixture instead of `claude`. No real vendor CLI was invoked, no credential was
+read and nothing was spent, and the default `claude` path in step 2 is the one part no test
+here can stand behind.
 
 ## Prerequisites
 
