@@ -31,7 +31,13 @@ failure prints what was expected, what the tool answered, and the run's report.
   a window record's `visible` is about its own surface — a mapped, unhidden window on a
   workspace no output is showing really answers `true`, and the worlds here say exactly that.
   Two more shapes follow from it: a pinned window on a workspace nobody is showing (on screen
-  all the same), and a special workspace, open on a monitor and then shut again.
+  all the same), and a special workspace, open on a monitor and then shut again. A case can also
+  say what the world looks like *after* the pointer has moved — `monitors.3`, `clients.3`,
+  `cursorpos.4` — which is what the guard before an input event is checked against: an output
+  that switched what it is showing (the target's fingerprint is identical and it is on screen
+  nowhere), a window that moved, was withdrawn, hidden or stopped taking input, and a pointer
+  that arrived and was then moved. `cursorpos.<n>.json` pins one pointer read, since the stub's
+  own moves otherwise keep the cursor in its state directory.
 
 The environment is the point of the harness: `WAYLAND_DISPLAY`, `DISPLAY`,
 `HYPRLAND_INSTANCE_SIGNATURE` and `XDG_SESSION_TYPE` are removed and PATH is stubs-first
