@@ -17,6 +17,7 @@
       packages = forAll (pkgs: rec {
         browser = pkgs.callPackage ./browser/package.nix { };
         hyprland = pkgs.callPackage ./hyprland/package.nix { };
+        coordinator = pkgs.callPackage ./coordinator/package.nix { };
         default = browser;
       });
 
