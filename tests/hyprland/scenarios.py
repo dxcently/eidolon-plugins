@@ -117,6 +117,23 @@ MONITORS_SPECIAL = [dict(MONITORS[0])] + [
     dict(MONITORS[1], specialWorkspace={"id": -99, "name": "special:scratch"})
 ]
 
+# The same session with no output showing the workspace FOOT is on any more: an output switched
+# what it is showing while the pointer was travelling. Nothing about FOOT itself changes — same
+# window, same workspace, same rectangle — which is exactly why a fingerprint cannot catch it.
+MONITORS_AWAY = [
+    dict(MONITORS[0]),
+    dict(MONITORS[1], activeWorkspace={"id": 12, "name": "12"}),
+]
+
+# FOOT a moment later, one condition at a time: withdrawn, drawn nowhere, refusing input.
+UNMAPPED = dict(FOOT, mapped=False)
+HIDDEN_NOW = dict(FOOT, hidden=True)
+NO_INPUT = dict(FOOT, acceptsInput=False)
+
+# Where a pointer that arrived and was then moved by something else would be.
+CURSOR_ELSEWHERE = {"x": 4000, "y": 500}
+
+
 WORKSPACES = [
     {"id": 1, "name": "1", "monitor": "DP-1", "monitorID": 0, "windows": 0,
      "hasfullscreen": False, "lastwindow": "0x0", "lastwindowtitle": "",
@@ -165,6 +182,18 @@ CASES = {
     "click-gone": {"clients.2": [EDITOR, HIDDEN]},
     "click-replaced": {"clients.2": [REPLACED, EDITOR, HIDDEN]},
     "click-pointer-miss": {"flag:pointer_stuck": ""},
+    # The guard that runs immediately before an input event, against a world that changed while
+    # the pointer was moving. The n in these keys is the call of that command the guard makes
+    # (the selftest's own inspect reads the first of each), so `monitors.3` is what the guard
+    # before the first press sees.
+    "click-monitor-switch": {"monitors.3": MONITORS_AWAY},
+    "scroll-monitor-switch": {"monitors.3": MONITORS_AWAY},
+    "click-monitor-switch-mid-count": {"monitors.4": MONITORS_AWAY},
+    "click-moved-midway": {"clients.3": [MOVED, EDITOR, HIDDEN]},
+    "click-hidden-midway": {"clients.3": [HIDDEN_NOW, EDITOR, HIDDEN]},
+    "click-unmapped-midway": {"clients.3": [UNMAPPED, EDITOR, HIDDEN]},
+    "click-input-refused-midway": {"clients.3": [NO_INPUT, EDITOR, HIDDEN]},
+    "click-pointer-drift": {"cursorpos.4": CURSOR_ELSEWHERE},
     "click-hidden": {},
     "click-pinned": {"clients": [FOOT, EDITOR, PINNED]},
     "click-special-closed": {"clients": [FOOT, EDITOR, SPECIAL],
@@ -221,6 +250,12 @@ def write(directory, case):
         if key.startswith("flag:"):
             with open(os.path.join(directory, key[len("flag:"):]), "w") as f:
                 f.write(text)
+    # And any <name>.<n> key is the answer to the n-th call of that command: the world as the
+    # guard before the input event finds it, after the pointer has moved.
+    for key, value in spec.items():
+        if key.partition(".")[2].isdigit():
+            with open(os.path.join(directory, f"{key}.json"), "w") as f:
+                json.dump(value, f, indent=2)
 
 
 def main():

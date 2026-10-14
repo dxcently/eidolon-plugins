@@ -59,6 +59,20 @@ status)
         fi
         ;;
     cursorpos)
+        # The stub's own pointer moves keep the cursor in $st/cursor. A case may also pin the
+        # answer to one call with cursorpos.<n>.json — a pointer that arrived and was then moved
+        # by something else, which is the thing the guard before an input event has to notice.
+        n=$(cat "$st/cursorpos.n" 2>/dev/null || echo 0)
+        n=$((n + 1))
+        echo "$n" > "$st/cursorpos.n"
+        k=$n
+        while [ "$k" -ge 1 ]; do
+            if [ -f "$fx/cursorpos.$k.json" ]; then
+                cat "$fx/cursorpos.$k.json"
+                exit 0
+            fi
+            k=$((k - 1))
+        done
         if [ -f "$st/cursor" ]; then
             read -r x y < "$st/cursor"
             printf '{"x": %s, "y": %s}\n' "$x" "$y"

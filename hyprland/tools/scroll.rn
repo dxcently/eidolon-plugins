@@ -8,7 +8,7 @@
 pub fn manifest() {
     #{
         name: "hyprland_scroll",
-        description: "Scroll inside a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, dx/dy are the scroll amounts (positive dy scrolls down, positive dx scrolls right), and x/y are the window-relative point to scroll at (default: the middle of the window). The pointer is moved over that point first and confirmed there, then the axis events are sent; a stale, moved, disappeared or non-visible target, or a pointer that did not arrive, is refused rather than scrolled. Moving the pointer may focus the window under it (input:follow_mouse).",
+        description: "Scroll inside a Hyprland window: window is an address from hyprland_inspect, expect is the fingerprint that was inspected, dx/dy are the scroll amounts (positive dy scrolls down, positive dx scrolls right), and x/y are the window-relative point to scroll at (default: the middle of the window). The pointer is moved over that point first and confirmed there, and then the monitors, the windows and the pointer's position are read again immediately before the axis events go out; a stale, moved, disappeared or non-visible target, a target whose output switched away from the workspace it is on, a point that is no longer inside it, or a pointer that did not arrive, is refused rather than scrolled. Moving the pointer may focus the window under it (input:follow_mouse).",
         approval: "mutating",
         input_schema: #{
             "type": "object",
@@ -87,10 +87,16 @@ pub async fn call(input) {
         Ok(m) => m,
         Err(e) => return Ok(refuse(`${e}`)),
     };
-    let again = hypr_json(["-j", "clients"]).await?;
-    match check_target(again, address, expect) {
-        None => {}
-        Some(reason) => return Ok(refuse(`the pointer is at ${point.x},${point.y} and nothing was scrolled: ${reason}`)),
+    // The same guard the click makes before every press, for the same reason: the pointer took
+    // time to get there, and an output that switched the workspace it shows in that time leaves
+    // the target's own fingerprint unchanged — same window, same workspace, on screen nowhere —
+    // so the monitors are read again here, with the windows and the pointer's position, rather
+    // than trusting the check made before the move.
+    match revalidate_at_pointer(address, expect, point).await {
+        Ok(()) => {}
+        Err(reason) => {
+            return Ok(refuse(`the pointer is at ${point.x},${point.y} and nothing was scrolled: ${reason}`));
+        }
     }
 
     let args = ["pointer", "scroll", num_text(dy), num_text(dx)];
@@ -554,6 +560,58 @@ async fn point_pointer_at(x, y, settle) {
         return Err(`the pointer was moved from ${from.x},${from.y} by ${dx},${dy} but the compositor says it is at ${to.x},${to.y}, not ${x},${y} — the caller's screen may be moving under it, so nothing was clicked or scrolled`);
     }
     Ok(#{ from: from, to: to })
+}
+
+// Everything that has to be true *at the instant* an input event goes out, read again right
+// before it, in one place: the window is still the one that was inspected, still mapped,
+// unhidden and taking input; the monitor it is on is still showing its workspace; the point is
+// still inside its rectangle; and the pointer is actually there.
+//
+// The checks made before the pointer moved are not enough for this. A window's fingerprint
+// carries its own workspace, so it does *not* change when an output switches the workspace it
+// shows — the window is the same window on the same workspace, and now it is nowhere on screen.
+// A click aimed at layout x,y would then land on whatever that output is showing at x,y instead.
+// Reading the monitors again is what catches it, and reading them here rather than once is what
+// makes a multi-press stop at the press whose world changed.
+//
+// These reads and the input event are still separate compositor calls, and no compositor
+// primitive here binds an event to a window (the input path is a virtual device; see the
+// plugin's README) — the answer says so rather than claiming the race is closed.
+async fn revalidate_at_pointer(address, expect, point) {
+    let monitors = hypr_json(["-j", "monitors"]).await?;
+    let clients = hypr_json(["-j", "clients"]).await?;
+    match check_target(clients, address, expect) {
+        None => {}
+        Some(reason) => return Err(reason),
+    }
+    let w = match find_window(clients, address) {
+        Some(w) => w,
+        None => return Err(`no window with address ${address} any more`),
+    };
+    if !bool_field(w, "mapped") {
+        return Err(`window ${address} is not mapped any more (withdrawn or still mapping)`);
+    }
+    if bool_field(w, "hidden") {
+        return Err(`window ${address} is hidden again: the compositor is not drawing it`);
+    }
+    if !bool_field(w, "acceptsInput") {
+        return Err(`window ${address} stopped accepting input`);
+    }
+    if !window_on_screen(monitors, w) {
+        let ws = workspace_of_window(w);
+        return Err(`the output showing this window switched away from workspace ${int_field(ws, "id")} while the pointer was moving, so ${address} is on screen nowhere now and ${point.x},${point.y} is not on it. hyprland_focus would switch to that workspace — a visible change this tool will not make on its own`);
+    }
+    let at = pair(w, "at");
+    let size = pair(w, "size");
+    if point.x < at[0] || point.y < at[1] || point.x >= at[0] + size[0] || point.y >= at[1] + size[1] {
+        return Err(`the point ${point.x},${point.y} is outside the window's ${size[0]}x${size[1]} at ${at[0]},${at[1]} now`);
+    }
+    let cursor = hypr_json(["-j", "cursorpos"]).await?;
+    let now = #{ x: int_field(cursor, "x"), y: int_field(cursor, "y") };
+    if now.x != point.x || now.y != point.y {
+        return Err(`the compositor says the pointer is at ${now.x},${now.y}, not ${point.x},${point.y} any more: it moved between the move and this instant`);
+    }
+    Ok(())
 }
 
 // Whichever window the compositor has focused, and whether it is the one aimed at.
