@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# A stand-in for `wlrctl`, for tests: it records the invocation and moves the cursor the
+# fake `hyprctl` reports. It creates no virtual pointer and talks to no compositor.
+#
+# The guard at the bottom is the point of this file: a `pointer click` with no button
+# argument is what wlrctl's own CLI does (defaults to left), and it is what the plugin must
+# never construct. If that invocation ever appears, this writes BAD to the log and fails,
+# so the harness catches it instead of a real click appearing somewhere.
+set -uo pipefail
+
+st=${HYPRLAND_STATE:?HYPRLAND_STATE must name a writable state directory}
+fx=${HYPRLAND_FIXTURE:?HYPRLAND_FIXTURE must name a scenario directory}
+
+printf 'wlrctl %s\n' "$*" >> "$st/input.log"
+
+if [ "${1:-}" != "pointer" ]; then
+    echo "the stub wlrctl only implements pointer actions, not: ${1:-nothing}" >&2
+    exit 2
+fi
+
+case "${2:-}" in
+move)
+    dx=${3:?move needs dx}
+    dy=${4:?move needs dy}
+    case "$dx$dy" in
+    *[!0-9-]*)
+        echo "Bad value: '$dx' or '$dy'" >&2
+        exit 2
+        ;;
+    esac
+    if [ -f "$fx/pointer_stuck" ]; then
+        # The pointer was moved, but something else moved it back: the case where the
+        # plugin's read-back must refuse to click.
+        exit 0
+    fi
+    read -r x y < "$st/cursor"
+    echo "$((x + dx)) $((y + dy))" > "$st/cursor"
+    ;;
+click)
+    button=${3:-}
+    case "$button" in
+    left | right | middle) ;;
+    *)
+        printf 'BAD wlrctl pointer click with no explicit button (or "%s"): the plugin must always name one\n' "$button" >> "$st/input.log"
+        echo "Unknown button: '$button'" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+scroll)
+    [ -n "${3:-}" ] && [ -n "${4:-}" ] || {
+        echo "Bad value: scroll needs dy and dx" >&2
+        exit 2
+    }
+    ;;
+*)
+    echo "the stub wlrctl does not implement: pointer ${2:-nothing}" >&2
+    exit 2
+    ;;
+esac
+
+exit 0

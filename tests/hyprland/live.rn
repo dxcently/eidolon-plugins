@@ -1,0 +1,88 @@
+// The hyprland live smoke's sequence, run by tests/hyprland/smoke.sh with `--provider mock` in a
+// throwaway config. It finds its own sink by title, so no address is passed in by hand, and it
+// re-checks the sink's identity at each step: anything that is not the sink aborts the run.
+//
+// The sink is an inert reader (tests/hyprland/smoke.sh writes it): it appends what it receives to
+// a log file and executes nothing. The line it appends is the evidence that the keystrokes
+// landed in it, and that the refusal cases injected nothing.
+
+pub fn workflow() {
+    #{
+        name: "live",
+        description: "Find the smoke sink by title, then drive the hyprland verbs at it: focus, screenshot, click at an explicit button, type a line, press Return, press a key, scroll; then two refusals that must inject nothing. Re-checks the sink's fingerprint and focus before each act and stops if either moves.",
+        approval: "mutating",
+        params: #{
+            "type": "object",
+            "properties": #{
+                "title": #{ "type": "string", "description": "The sink window's title, e.g. hyprland-smoke." },
+                "text": #{ "type": "string", "description": "The line to type into the sink." },
+            },
+        },
+    }
+}
+
+async fn step(name, tool, args) {
+    match eidolon::tool_call(tool, args).await {
+        Ok(t) => `ok   ${name}\n`,
+        Err(e) => `ERR  ${name}: ${e}\n`,
+    }
+}
+
+fn find(inspected, title) {
+    for w in inspected.windows {
+        if w.title.contains(title) {
+            return Some(w);
+        }
+    }
+    None
+}
+
+pub async fn run(input) {
+    let title = match input.get("title") {
+        Some(t) => if t is String { t } else { "" },
+        None => "",
+    };
+    let text = match input.get("text") {
+        Some(t) => if t is String { t } else { "hyprland smoke ok" },
+        None => "hyprland smoke ok",
+    };
+    let out = "";
+    let first = eidolon::tool_call("hyprland_inspect", #{ format: "json" }).await?;
+    let inspected = json::from_string(first)?;
+    let target = match find(inspected, title) {
+        Some(w) => w,
+        None => return Ok(`ERR  no window titled "${title}" is open — nothing was aimed at\n`),
+    };
+    let address = target.address;
+    let expect = target.fingerprint;
+    out += `target: ${address} ${target.class} "${target.title}" ws=${target.workspace.id} rect=${target.rect}\n`;
+    out += `fingerprint: ${expect}\n`;
+
+    // Focus it, then verify the compositor agrees before anything is aimed at a point.
+    out += step("focus", "hyprland_focus", #{ window: address, expect: expect }).await;
+    let again = json::from_string(eidolon::tool_call("hyprland_inspect", #{ format: "json" }).await?)?;
+    match find(again, title) {
+        Some(w) => {
+            if w.address != address || w.fingerprint != expect {
+                return Ok(out + `ERR  the sink moved or changed between the inspection and the focus — stopping\n`);
+            }
+            if !w.focused {
+                return Ok(out + `ERR  the sink is not the focused window after the focus step — stopping\n`);
+            }
+            out += "verified: the sink is the focused window and its fingerprint is unchanged\n";
+        }
+        None => return Ok(out + "ERR  the sink is gone — stopping\n"),
+    }
+
+    out += step("screenshot window", "hyprland_screenshot", #{ target: "window", window: address, expect: expect }).await;
+    out += step("click", "hyprland_click", #{ window: address, expect: expect, x: 30, y: 30, button: "left" }).await;
+    out += step("type", "hyprland_type", #{ window: address, expect: expect, text: text }).await;
+    out += step("return", "hyprland_key", #{ window: address, expect: expect, key: "Return" }).await;
+    out += step("key", "hyprland_key", #{ window: address, expect: expect, key: "Escape" }).await;
+    out += step("scroll", "hyprland_scroll", #{ window: address, expect: expect, dy: 3 }).await;
+
+    // The refusals: each must inject nothing. The sink's log is what says so.
+    out += step("refuse: stale fingerprint", "hyprland_click", #{ window: address, expect: `${expect} (stale)`, x: 10, y: 10, button: "left" }).await;
+    out += step("refuse: control character", "hyprland_type", #{ window: address, expect: expect, text: "line\nbreak" }).await;
+    Ok(out)
+}

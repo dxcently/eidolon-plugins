@@ -87,6 +87,10 @@ page scripts.
    eidolon plugins service status browser    # probes the port; never trusts a record
    ```
 
+   A plugin copied in by hand — this README's own step 2 — is listed as
+   `unmanaged`, and `eidolon plugins update`/`sync` cannot see it: the record
+   they read is `plugins.toml`, which `install` writes and a copy does not.
+
    `start` refuses until the declaration is approved, and asks again if the
    `service:` block changes — an update cannot inherit the right to run a
    process. The child outlives the CLI and its output appends to
@@ -123,6 +127,11 @@ eidolon plugins | grep -A8 '^browser '     # the verbs and workflows, and whethe
 eidolon tools | grep -c '"name": "browser_'
 # 7
 ```
+
+A tool called while the service is down answers with the command that starts
+it — `eidolon plugins service start browser` — rather than a bare connection
+refusal; there is no lazy start behind the tools, and the check for that is
+`tests/browser/run.sh`.
 
 `chromium_installed: false` means no Chromium was found: set
 `EIDOLON_BROWSER_CHROME` to its path.
