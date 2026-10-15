@@ -22,6 +22,8 @@ rustPlatform.buildRustPackage {
       # The workspace has more than one member; cargo loads every member's
       # manifest, so each package's source has to carry the other one.
       ../browser/service
+      ../librewolf/service
+      ../claude/service
     ];
   };
   cargoLock.lockFile = ../Cargo.lock;

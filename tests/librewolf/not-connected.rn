@@ -1,0 +1,55 @@
+// Every verb, answered by a bridge that is not there. The tools are copied from
+// the repo unchanged; the harness only vouches for them in a temp config and
+// writes the token they read, so this is the shipped bytes the test measures.
+//
+// What it checks: each verb names what the operator has to do — the browser runs
+// the host, not eidolon — instead of leaving a dial failure to be interpreted,
+// and none of them reports success.
+
+pub fn workflow() {
+    #{
+        name: "not-connected",
+        description: "Check that every librewolf verb says why the bridge is not answering when nothing is listening. Needs the bridge down (the harness refuses to run otherwise); no browser and no page are involved.",
+        approval: "read_only",
+        params: #{ "type": "object", "properties": #{} },
+    }
+}
+
+pub async fn run(input) {
+    let out = [];
+    let bad = [];
+    let want = "LibreWolf must be running with the librewolf bridge extension connected";
+    for one in calls() {
+        let name = one.name;
+        // `name` goes to a host primitive, which consumes it (Rune's move
+        // semantics), and the answer is reported under that name — so the
+        // primitive gets a copy.
+        let got = match eidolon::tool_call(name.clone(), one.args).await {
+            Ok(t) => #{ ok: true, text: t },
+            Err(e) => #{ ok: false, text: e },
+        };
+        if !got.ok && got.text.contains(want) {
+            out.push("ok   " + name + " names what starts the bridge");
+        } else {
+            out.push("FAIL " + name + ": answered " + got.text);
+            bad.push(name);
+        }
+    }
+    let text = "";
+    for l in out {
+        text += l + "\n";
+    }
+    if bad.len() > 0 {
+        return #{ content: text + "not-connected: " + `${bad.len()}` + " check(s) failed", is_error: true };
+    }
+    text + "not-connected: " + `${out.len()}` + " checks hold"
+}
+
+fn calls() {
+    [
+        #{ name: "librewolf_status", args: #{} },
+        #{ name: "librewolf_read", args: #{} },
+        #{ name: "librewolf_structure", args: #{} },
+        #{ name: "librewolf_detach", args: #{} },
+    ]
+}

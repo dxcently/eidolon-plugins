@@ -14,7 +14,14 @@ installs the same way.
 | [`subagent/`](subagent/) | `subagent_spawn`, `subagent_pick`, `subagent_plan`, `subagent_list`, `subagent_trace`, `subagent_steer`, `subagent_cancel` (models picked per kind, formations, budgets, spend); workflows `fanout`, `door` | `eidolon run`, child sessions in the background | `eidolon plugins install dxcently/eidolon-plugins subagent`, then `eidolon plugins trust subagent` |
 | [`hyprland/`](hyprland/) | `hyprland_inspect`, `hyprland_screenshot`, `hyprland_focus`, `hyprland_click`, `hyprland_scroll`, `hyprland_type`, `hyprland_key`; workflow `selftest` | Hyprland with a Lua config provider, and `grim`/`wlrctl`/`wtype` from `nix build .#hyprland` | `eidolon plugins install dxcently/eidolon-plugins hyprland`, then `eidolon plugins trust hyprland` |
 | [`coordinator/`](coordinator/) | `coordinator_adopt`, `coordinator_release`, `coordinator_adoptions`, `coordinator_notices` | `eidolon-coordinator`, a monitor that watches the workers a coordinator adopted and sends one notice per observed halt | `eidolon plugins install dxcently/eidolon-plugins coordinator`, then `eidolon plugins trust coordinator` — see its README |
+| [`librewolf/`](librewolf/) | `librewolf_status`, `librewolf_read`, `librewolf_structure`, `librewolf_detach` | LibreWolf with the plugin's bridge extension loaded, and the host binary it names — no service to start | `eidolon plugins install dxcently/eidolon-plugins librewolf`, then `eidolon plugins trust librewolf` — see its README |
 | [`jev/`](jev/) | automation graphs as workflows: `find-related`, `ctf-juice-recon`, `triage-linux`, `triage-wsl`, `triage-botforge`, `wiki-hop`, `selftest`; tools `jev_graph`, `jev_mark`, `jev_choose`, `jev_entail` and eleven one-command recon tools (`jev_os_release`, ... `jev_juice_robots`) | for the chooser graphs, the jev service (Python and torch, not shipped here) | `eidolon plugins install dxcently/eidolon-plugins jev`, then `eidolon plugins trust jev` |
+
+**`claude/`** is the driver host: the half of an external-CLI driver that runs beside a
+session and owns the CLI. It ships no verbs — a driver has nothing to type — so it is
+installed for its service rather than trusted (`eidolon plugins service approve claude`,
+then `service start`). See [its README](claude/README.md) for the `[[driver]]` table a
+session needs.
 
 All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
 
@@ -78,6 +85,8 @@ fixture is [`tests/libsfixture/`](tests/libsfixture/).
 ```bash
 nix build .#browser          # the service, with Chromium from nixpkgs
 nix build .#hyprland         # grim + wlrctl + wtype for the hyprland plugin
+nix build .#librewolf        # the host LibreWolf spawns for the librewolf plugin
+nix build .#claude           # the driver host a session dials for the claude plugin
 nix develop                  # cargo, clippy, chromium; `cargo test` runs the real-browser tests too
 cargo test                   # without Nix: unit tests, plus browser tests if EIDOLON_BROWSER_CHROME is set
 ```

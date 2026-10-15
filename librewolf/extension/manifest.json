@@ -1,0 +1,25 @@
+{
+  "manifest_version": 2,
+  "name": "eidolon librewolf bridge",
+  "version": "0.1.0",
+  "description": "Let eidolon read the one tab you attach with a click. No cookies, no history, no list of your tabs, no browsing on its own.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "librewolf-bridge@eidolon.local",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": ["nativeMessaging", "activeTab"],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_title": "Attach this tab for eidolon",
+    "default_icon": "icon.svg"
+  },
+  "icons": {
+    "48": "icon.svg",
+    "96": "icon.svg"
+  }
+}
