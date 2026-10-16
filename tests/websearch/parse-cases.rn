@@ -1,0 +1,102 @@
+// Canned replies through the tool's own parsing. The functions the cases call sit between
+// `parse:begin` and `parse:end` in tools/search.rn, and run.sh appends them to this file, so
+// the test runs the shipped bytes. No network, no key, no host call.
+
+pub fn workflow() {
+    #{
+        name: "parse",
+        description: "Feed canned replies through websearch's parsing: good, missing results, missing item fields, non-JSON, HTTP errors, and max_results of each type.",
+        approval: "read_only",
+        params: #{ "type": "object", "properties": #{} },
+    }
+}
+
+fn envelope(status, body) {
+    match json::to_string(#{ status: status, body: body }) {
+        Ok(s) => s,
+        Err(e) => `${e}`,
+    }
+}
+
+fn verdict(name, got, want_ok, needle) {
+    let ok = match got {
+        Ok(t) => want_ok && `${t}`.contains(needle),
+        Err(e) => !want_ok && `${e}`.contains(needle),
+    };
+    let shown = match got {
+        Ok(t) => `${t}`,
+        Err(e) => `${e}`,
+    };
+    if ok {
+        "ok   " + name
+    } else {
+        "FAIL " + name + ": wanted " + needle + ", answered " + shown
+    }
+}
+
+pub async fn run(input) {
+    let out = [];
+    let good = `{"results":[{"title":"Rust","url":"https://rust-lang.org","content":"A language."}]}`;
+    out.push(verdict("good body names the title", reply_text(envelope(200, good), "rust"), true, "1. Rust"));
+    out.push(verdict("good body carries the url", reply_text(envelope(200, good), "rust"), true, "https://rust-lang.org"));
+    out.push(verdict("good body carries the snippet", reply_text(envelope(200, good), "rust"), true, "A language."));
+    out.push(verdict("no results key is refused by name", reply_text(envelope(200, `{"hits":[]}`), "x"), false, "\"results\""));
+    out.push(verdict("no results key quotes the body", reply_text(envelope(200, `{"hits":[]}`), "x"), false, "{\"hits\":[]}"));
+    out.push(verdict("item missing fields renders without crashing", reply_text(envelope(200, `{"results":[{"url":"https://b.example"},{}]}`), "x"), true, "(no title)"));
+    out.push(verdict("item missing title keeps its url", reply_text(envelope(200, `{"results":[{"url":"https://b.example"}]}`), "x"), true, "https://b.example"));
+    out.push(verdict("empty item renders no url as (no url)", reply_text(envelope(200, `{"results":[{}]}`), "x"), true, "(no url)"));
+    out.push(verdict("non-JSON body is refused by name", reply_text(envelope(200, "<html>oops"), "x"), false, "not JSON"));
+    out.push(verdict("non-JSON body quotes its first characters", reply_text(envelope(200, "<html>oops"), "x"), false, "<html>oops"));
+    out.push(verdict("HTTP error names the status", reply_text(envelope(500, `{"error":"boom"}`), "x"), false, "HTTP 500"));
+    out.push(verdict("HTTP error quotes the body", reply_text(envelope(500, `{"error":"boom"}`), "x"), false, "boom"));
+    out.push(verdict("answer that is not JSON is refused", reply_text("garbage", "x"), false, "not JSON"));
+    out.push(verdict("results that is not a list is refused", reply_text(envelope(200, `{"results":"none"}`), "x"), false, "not a list"));
+    out.push(verdict("answer that is not an object is refused", reply_text(envelope(200, `[1,2]`), "x"), false, "not an object"));
+    out.push(verdict("zero results says so", reply_text(envelope(200, `{"results":[]}`), "rust"), true, "no results for: rust"));
+
+    let cases = [
+        #{ name: "max_results 99 clamps to 10", got: max_results(#{ max_results: 99 }), want: Ok(10) },
+        #{ name: "max_results 0 clamps to 1", got: max_results(#{ max_results: 0 }), want: Ok(1) },
+        #{ name: "max_results 3 is kept", got: max_results(#{ max_results: 3 }), want: Ok(3) },
+        #{ name: "max_results absent is 5", got: max_results(#{}), want: Ok(5) },
+    ];
+    for c in cases {
+        if c.got == c.want {
+            out.push("ok   " + c.name);
+        } else {
+            match c.got {
+                Ok(v) => out.push("FAIL " + c.name + ": answered " + `${v}`),
+                Err(e) => out.push("FAIL " + c.name + ": answered error " + `${e}`),
+            }
+        }
+    }
+    let refused = [
+        #{ name: "max_results as a string is refused by name", got: max_results(#{ max_results: "5" }) },
+        #{ name: "max_results as a float is refused by name", got: max_results(#{ max_results: 2.5 }) },
+    ];
+    for c in refused {
+        match c.got {
+            Err(e) => {
+                if `${e}`.contains("max_results") {
+                    out.push("ok   " + c.name);
+                } else {
+                    out.push("FAIL " + c.name + ": " + `${e}`);
+                }
+            }
+            Ok(v) => out.push("FAIL " + c.name + ": accepted " + `${v}`),
+        }
+    }
+
+    let text = "";
+    let bad = 0;
+    for l in out {
+        text += l + "\n";
+        if l.contains("FAIL") {
+            bad += 1;
+        }
+    }
+    if bad > 0 {
+        return #{ content: text + "parse: " + `${bad}` + " check(s) failed", is_error: true };
+    }
+    text + "parse: " + `${out.len()}` + " checks hold"
+}

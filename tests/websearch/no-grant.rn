@@ -1,0 +1,48 @@
+// What `websearch_search` answers with no grant for `secret:ollama` and no network: the
+// grant check refuses before any connection opens, and the answer names the source that
+// was missing. An empty query is refused before the endpoint is named at all.
+//
+// The tool is copied from the repo unchanged and vouched for in a temp config; no grant
+// row is written, so the call cannot reach ollama.com.
+
+pub fn workflow() {
+    #{
+        name: "no-grant",
+        description: "Check that websearch_search refuses to reach Ollama without the ollama grant, and names what is missing; and that an empty query is refused before anything is sent.",
+        approval: "read_only",
+        params: #{ "type": "object", "properties": #{} },
+    }
+}
+
+pub async fn run(input) {
+    let out = [];
+    let bad = [];
+    let got = match eidolon::tool_call("websearch_search", #{ query: "rust async" }).await {
+        Ok(t) => #{ ok: true, text: t },
+        Err(e) => #{ ok: false, text: `${e}` },
+    };
+    if !got.ok && got.text.contains("secret:ollama") {
+        out.push("ok   websearch_search without the grant names secret:ollama");
+    } else {
+        out.push("FAIL websearch_search without the grant answered " + got.text);
+        bad.push("grant");
+    }
+    let empty = match eidolon::tool_call("websearch_search", #{ query: "  " }).await {
+        Ok(t) => #{ ok: true, text: t },
+        Err(e) => #{ ok: false, text: `${e}` },
+    };
+    if !empty.ok && empty.text.contains("non-empty `query`") {
+        out.push("ok   an empty query is refused before the endpoint");
+    } else {
+        out.push("FAIL an empty query answered " + empty.text);
+        bad.push("empty");
+    }
+    let text = "";
+    for l in out {
+        text += l + "\n";
+    }
+    if bad.len() > 0 {
+        return #{ content: text + "no-grant: " + `${bad.len()}` + " check(s) failed", is_error: true };
+    }
+    text + "no-grant: " + `${out.len()}` + " checks hold"
+}

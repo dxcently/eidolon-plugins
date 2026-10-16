@@ -15,6 +15,7 @@ installs the same way.
 | [`hyprland/`](hyprland/) | `hyprland_inspect`, `hyprland_screenshot`, `hyprland_focus`, `hyprland_click`, `hyprland_scroll`, `hyprland_type`, `hyprland_key`; workflow `selftest` | Hyprland with a Lua config provider, and `grim`/`wlrctl`/`wtype` from `nix build .#hyprland` | `eidolon plugins install dxcently/eidolon-plugins hyprland`, then `eidolon plugins trust hyprland` |
 | [`coordinator/`](coordinator/) | `coordinator_adopt`, `coordinator_release`, `coordinator_adoptions`, `coordinator_notices` | `eidolon-coordinator`, a monitor that watches the workers a coordinator adopted and sends one notice per observed halt | `eidolon plugins install dxcently/eidolon-plugins coordinator`, then `eidolon plugins trust coordinator` — see its README |
 | [`librewolf/`](librewolf/) | `librewolf_status`, `librewolf_read`, `librewolf_structure`, `librewolf_detach` | LibreWolf with the plugin's bridge extension loaded, and the host binary it names — no service to start | `eidolon plugins install dxcently/eidolon-plugins librewolf`, then `eidolon plugins trust librewolf` — see its README |
+| [`websearch/`](websearch/) | `websearch_search`: Ollama's hosted web search, for a host with no browser and an Ollama key | nothing: a direct HTTPS call with the `ollama` secret | `eidolon plugins install dxcently/eidolon-plugins websearch`, then `eidolon plugins trust websearch` and `eidolon plugins grant --plugin websearch secret:ollama` — see its README |
 | [`jev/`](jev/) | automation graphs as workflows: `find-related`, `ctf-juice-recon`, `triage-linux`, `triage-wsl`, `triage-botforge`, `wiki-hop`, `selftest`; tools `jev_graph`, `jev_mark`, `jev_choose`, `jev_entail` and eleven one-command recon tools (`jev_os_release`, ... `jev_juice_robots`) | for the chooser graphs, the jev service (Python and torch, not shipped here) | `eidolon plugins install dxcently/eidolon-plugins jev`, then `eidolon plugins trust jev` |
 
 **`claude/`** is the driver host: the half of an external-CLI driver that runs beside a
@@ -25,9 +26,11 @@ session needs.
 
 All need eidolon with the plugin runtime (upstream `master`); `jev` also needs workflows.
 
-**Web search** isn't here on purpose: eidolon ships it as the built-in
-`search` tool, tied to the session's own key. To read a result, use `fetch`,
-or `browser_open` + `browser_read` for pages that need a real browser.
+**Web search**: eidolon's built-in `search` tool is backed by Brave and needs the
+`brave_search` secret. [`websearch/`](websearch/) is the other backend, for a host
+that holds an Ollama key (`ollama`) instead: `websearch_search`, no service. To read
+a result, use `fetch`, or `browser_open` + `browser_read` for pages that need a real
+browser.
 
 ## Installing one
 
